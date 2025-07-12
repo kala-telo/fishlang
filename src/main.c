@@ -21,6 +21,7 @@ typedef struct {
     // index in symbols array
     size_t name;
     TAC32Arr code;
+    uint16_t temps_count;
 } StaticFunction;
 
 typedef struct {
@@ -114,10 +115,18 @@ void free_ir(IR *ir) {
 }
 
 void codegen_powerpc(IR ir, FILE* output) {
+    // TODO: handle spill:
+    // fold_temporaries minimizes their usage by reusing,
+    // but it threats "register space" as nearly infinite amount of registers
+    // on real machine we would use the first N avalible as real registers,
+    // and other as "in RAM registers", by loading their value dynamically from
+    // stack frame
     const int call_base = 3;
     const int gpr_base = 14;
     for (size_t i = 0; i < ir.functions.len; i++) {
         TAC32Arr func = ir.functions.data[i].code;
+        // 19 is the amount of nonvolatile registers on powerpc
+        if (ir.functions.data[i].temps_count > 19) TODO();
         printf(".global %.*s\n", PS(ir.symbols.data[ir.functions.data[i].name]));
         printf("%.*s:\n", PS(ir.symbols.data[ir.functions.data[i].name]));
         int call_count = 0;
@@ -222,7 +231,7 @@ int main(int argc, char *argv[]) {
     // dump_ast(body, 0);
     IR ir = codegen(body);
     for (size_t i = 0; i < ir.functions.len; i++)
-        foldVRegisters(ir.functions.data[i].code);
+        ir.functions.data[i].temps_count = fold_temporaries(ir.functions.data[i].code);
     codegen_powerpc(ir, stdout);
     free_ir(&ir);
 

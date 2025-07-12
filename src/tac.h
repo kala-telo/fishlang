@@ -21,6 +21,6 @@ typedef struct {
     size_t len, capacity;
 } TAC32Arr;
 
-void foldVRegisters(TAC32Arr tac);
+uint16_t fold_temporaries(TAC32Arr tac);
 
 #endif // TAC_H

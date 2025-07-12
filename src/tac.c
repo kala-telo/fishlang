@@ -10,7 +10,7 @@ static bool ranges_intersect(int f1, int t1, int f2, int t2) {
     return !(t1 < f2 || t2 < f1);
 }
 
-void foldVRegisters(TAC32Arr tac) {
+uint16_t fold_temporaries(TAC32Arr tac) {
     size_t temps_count = 0;
     for (size_t i = 0; i < tac.len; i++) {
         if (tac.data[i].result >= temps_count)
@@ -114,4 +114,5 @@ void foldVRegisters(TAC32Arr tac) {
         }
     }
     #undef REMAP
+    return temps_count;
 }
