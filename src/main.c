@@ -152,6 +152,8 @@ void codegen_powerpc(IR ir, FILE* output) {
             case TAC_LOAD_INT:
                 if (inst.x < 65536) {
                     printf("    li %d, %d\n", inst.result, inst.x);
+                } else {
+                    TODO();
                 }
                 break;
             case TAC_LOAD_SYM:
@@ -177,6 +179,7 @@ void codegen_powerpc(IR ir, FILE* output) {
         printf("\n");
         printf("    lwz 0,20(1)\n");
         printf("    mtlr 0\n");
+        printf("    addi 1,1,16\n");
         printf("    blr\n");
     }
     for (size_t i = 0; i < ir.data.len; i++) {
@@ -226,7 +229,8 @@ int main(int argc, char *argv[]) {
     };
 
     ASTArr body = { 0 };
-    parse(&lex, &body);
+    while (peek_token(&lex).kind != LEX_END)
+        parse(&lex, &body);
 
     // dump_ast(body, 0);
     IR ir = codegen(body);
