@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "lexer.h"
+#include "todo.h"
 
 const char *tok_names[] = {
     [LEX_OPAREN]  = "`(`",
@@ -12,6 +13,7 @@ const char *tok_names[] = {
     [LEX_NAME]    = "<name>",
     [LEX_STRING]  = "<string>",
     [LEX_END]     = "<end of file>",
+    [LEX_NUMBER]  = "<number>",
 };
 
 bool eat_char(Lexer *lex) {
@@ -88,7 +90,7 @@ Token next_token(Lexer *lex) {
     }
     default:
         // Parsing word
-        if (isalpha(*lex->position)) {
+        if (isalpha(*lex->position) || *lex->position == '+') {
             String word = {
                 .string = lex->position,
                 .length = 1,
@@ -102,12 +104,26 @@ Token next_token(Lexer *lex) {
                 .kind = LEX_NAME,
                 .str = word,
             };
+        } else if (isdigit(*lex->position)) {
+            String word = {
+                .string = lex->position,
+                .length = 1,
+            };
+            if (!eat_char(lex)) goto fail;
+            while (isdigit(*lex->position)) {
+                word.length++;
+                if (!eat_char(lex)) goto fail;
+            }
+            return (Token){
+                .kind = LEX_NUMBER,
+                .str = word,
+            };
         }
     }
 
     fprintf(stderr, "Unexpected value '%c' (%d)\n", *lex->position,
             *lex->position);
-    abort();
+    TODO();
 
     fail: {
         fprintf(stderr, "Unexpected end of file\n");

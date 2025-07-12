@@ -7,6 +7,7 @@
 #include "string.h"
 #include "lexer.h"
 #include "parser.h"
+#include "todo.h"
 #include "tac.h"
 
 typedef struct {
@@ -43,78 +44,93 @@ typedef struct {
     } data;
 } IR;
 
-IR codegen(ASTArr ast) {
-    static IR ir = { 0 };
-    static size_t current_function = 0;
-    static bool in_args = false;
-    static uint16_t temp_num = 0;
+typedef struct {
+    IR ir;
+    size_t current_function;
+    uint16_t temp_num;
+    struct {
+        uint32_t *data;
+        size_t len, capacity;
+    } args_stack;
+} CodeGenCTX;
 
-    // kinda an ungly hack but it keeps arglist less noisy.
-    // maybe i'll make codegen into separate function instead l8r
-    static bool root_taken = false;
-    bool is_root = false;
-    if (!root_taken) {
-        is_root = true;
-        root_taken = true;
-    }
+void free_ctx(CodeGenCTX *ctx) {
+    #define FREE(x) do { if ((x) != NULL) { free(x); (x) = NULL; } } while(0)
+    FREE(ctx->args_stack.data);
+    FREE(ctx);
+    #undef FREE
+}
 
-    for (int i = 0; i < ast.len; i++) {
+IR codegen(ASTArr ast, CodeGenCTX *ctx) {
+    for (size_t i = 0; i < ast.len; i++) {
         AST node = ast.data[i];
         switch (node.kind) {
-        case AST_CALL: {
-            bool in_args_orig = in_args;
-            in_args = true;
-            codegen(node.as.call.args);
-            in_args = in_args_orig;
-            size_t r = ++temp_num;
-            size_t x = ++temp_num;
-            da_append(ir.symbols, node.as.call.callee);
-            da_append(ir.functions.data[current_function].code,
-                      ((TAC32){r, TAC_CALL_SYM, ir.symbols.len-1}));
-            if (in_args) {
-                da_append(ir.functions.data[current_function].code,
-                          ((TAC32){0, TAC_CALL_PUSH, temp_num}));
+        case AST_CALL:
+            codegen(node.as.call.args, ctx);
+            if (string_eq(node.as.call.callee, S("+"))) {
+                if(node.as.call.args.len != 2) TODO();
+                da_append(
+                    ctx->ir.functions.data[ctx->current_function].code,
+                    ((TAC32){++ctx->temp_num, TAC_ADD, da_pop(ctx->args_stack),
+                             da_pop(ctx->args_stack)}));
+            } else {
+                for (size_t i = 0; i < node.as.call.args.len; i++) {
+                    size_t base = ctx->args_stack.len-node.as.call.args.len;
+                    da_append(ctx->ir.functions.data[ctx->current_function].code,
+                              ((TAC32){0, TAC_CALL_PUSH,
+                                       ctx->args_stack.data[base+i], 0}));
+                }
+                da_append(ctx->ir.symbols, node.as.call.callee);
+                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                          ((TAC32){++ctx->temp_num, TAC_CALL_SYM,
+                                   ctx->ir.symbols.len - 1, 0}));
             }
-        } break;
+            da_append(ctx->args_stack, ctx->temp_num);
+            break;
         case AST_FUNCDEF:
-            da_append(ir.symbols, node.as.func.name);
-            da_append(ir.functions, ((StaticFunction){ir.symbols.len-1}));
-            current_function = ir.functions.len - 1;
-            codegen(node.as.func.body);
+            da_append(ctx->ir.symbols, node.as.func.name);
+            da_append(ctx->ir.functions,
+                      ((StaticFunction){ctx->ir.symbols.len - 1, {0}, 0}));
+            ctx->current_function = ctx->ir.functions.len-1;
+            codegen(node.as.func.body, ctx);
             break;
         case AST_LIST:
             TODO();
+            break;
         case AST_NAME:
             TODO();
+            break;
+        case AST_NUMBER:
+            da_append(
+                ctx->ir.functions.data[ctx->current_function].code,
+                ((TAC32){++ctx->temp_num, TAC_LOAD_INT, node.as.number, 0}));
+            da_append(ctx->args_stack, ctx->temp_num);
+            break;
         case AST_STRING:
-            da_append(ir.symbols, (String){0});
-            da_append(ir.data, ((StaticVariable){ir.symbols.len-1, node.as.string}));
-            da_append(ir.functions.data[current_function].code,
-                      ((TAC32){++temp_num, TAC_LOAD_SYM, ir.symbols.len - 1}));
-            if (in_args) {
-                da_append(ir.functions.data[current_function].code,
-                          ((TAC32){0, TAC_CALL_PUSH, temp_num}));
-            }
+            da_append(ctx->ir.symbols, (String){0});
+            da_append(ctx->ir.data, ((StaticVariable){ctx->ir.symbols.len - 1,
+                                                      node.as.string}));
+            da_append(ctx->ir.functions.data[ctx->current_function].code,
+                      ((TAC32){++ctx->temp_num, TAC_LOAD_SYM,
+                               ctx->ir.symbols.len - 1, 0}));
+            da_append(ctx->args_stack, ctx->temp_num);
             break;
         }
     }
-    IR r = ir;
-    // reseting the static variable
-    if (is_root) memset(&ir, 0, sizeof(ir));
-    return r;
+    return ctx->ir;
 }
 
 void free_ir(IR *ir) {
-    #define FFREE(x) do { if ((x) != NULL) { free(x); (x) = NULL; } } while(0)
+    #define FREE(x) do { if ((x) != NULL) { free(x); (x) = NULL; } } while(0)
     for (size_t i = 0; i < ir->functions.len; i++)
-        FFREE(ir->functions.data[i].code.data);
-    FFREE(ir->data.data);
-    FFREE(ir->symbols.data);
-    FFREE(ir->functions.data);
-    #undef FFREE
+        FREE(ir->functions.data[i].code.data);
+    FREE(ir->data.data);
+    FREE(ir->symbols.data);
+    FREE(ir->functions.data);
+    #undef FREE
 }
 
-void codegen_powerpc(IR ir, FILE* output) {
+void codegen_powerpc(IR ir, FILE *output) {
     // TODO: handle spill:
     // fold_temporaries minimizes their usage by reusing,
     // but it threats "register space" as nearly infinite amount of registers
@@ -126,14 +142,18 @@ void codegen_powerpc(IR ir, FILE* output) {
     for (size_t i = 0; i < ir.functions.len; i++) {
         TAC32Arr func = ir.functions.data[i].code;
         // 19 is the amount of nonvolatile registers on powerpc
-        if (ir.functions.data[i].temps_count > 19) TODO();
-        printf(".global %.*s\n", PS(ir.symbols.data[ir.functions.data[i].name]));
-        printf("%.*s:\n", PS(ir.symbols.data[ir.functions.data[i].name]));
+        if (ir.functions.data[i].temps_count > 19)
+            TODO();
+        fprintf(output, ".global %.*s\n",
+                PS(ir.symbols.data[ir.functions.data[i].name]));
+        fprintf(output, "%.*s:\n",
+                PS(ir.symbols.data[ir.functions.data[i].name]));
         int call_count = 0;
-        printf("    stwu 1,-16(1)\n"); // TODO: unhardcode 16-byte allocation
-        printf("    mflr 0\n");
-        printf("    stw 0, 20(1)\n");
-        printf("\n");
+        fprintf(output,
+                "    stwu 1,-16(1)\n"); // TODO: unhardcode 16-byte allocation
+        fprintf(output, "    mflr 0\n");
+        fprintf(output, "    stw 0, 20(1)\n");
+        fprintf(output, "\n");
         for (size_t j = 0; j < func.len; j++) {
             TAC32 inst = func.data[j];
             switch (inst.function) {
@@ -141,62 +161,80 @@ void codegen_powerpc(IR ir, FILE* output) {
                 TODO();
                 break;
             case TAC_CALL_SYM:
-                // if 
-                printf("    bl %.*s\n", PS(ir.symbols.data[inst.x]));
+                fprintf(output, "    bl %.*s\n", PS(ir.symbols.data[inst.x]));
                 call_count = 0;
                 break;
             case TAC_CALL_PUSH:
-                printf("    mr %d, %d\n", (call_count++)+call_base, inst.x+gpr_base);
+                fprintf(output, "    mr %d, %d\n", (call_count++) + call_base,
+                        inst.x + gpr_base);
                 assert(call_count < 8);
                 break;
             case TAC_LOAD_INT:
                 if (inst.x < 65536) {
-                    printf("    li %d, %d\n", inst.result, inst.x);
+                    fprintf(output, "    li %d, %d\n", inst.result+gpr_base, inst.x);
                 } else {
                     TODO();
                 }
                 break;
             case TAC_LOAD_SYM:
                 if (ir.symbols.data[inst.x].string != NULL) {
-                    printf("    lis %d, %.*s@ha\n", inst.result + gpr_base,
-                           PS(ir.symbols.data[inst.x]));
-                    printf("    ori %d, %d, %.*s@l\n", inst.result + gpr_base,
-                           inst.result + gpr_base, PS(ir.symbols.data[inst.x]));
+                    fprintf(output, "    lis %d, %.*s@ha\n",
+                            inst.result + gpr_base,
+                            PS(ir.symbols.data[inst.x]));
+                    fprintf(output, "    ori %d, %d, %.*s@l\n",
+                            inst.result + gpr_base, inst.result + gpr_base,
+                            PS(ir.symbols.data[inst.x]));
                 } else {
-                    printf("    lis %d, data_%d@ha\n", inst.result + gpr_base,
-                           inst.x);
-                    printf("    ori %d, %d, data_%d@l\n",
-                           inst.result + gpr_base, inst.result + gpr_base,
-                           inst.x);
+                    fprintf(output, "    lis %d, data_%d@ha\n",
+                            inst.result + gpr_base, inst.x);
+                    fprintf(output, "    ori %d, %d, data_%d@l\n",
+                            inst.result + gpr_base, inst.result + gpr_base,
+                            inst.x);
                 }
                 break;
             case TAC_ADD:
-                printf("    r%d = r%d + r%d\n", inst.result, inst.x,
-                       inst.y);
+                fprintf(output, "    add %d, %d, %d\n", inst.result + gpr_base,
+                        inst.x + gpr_base, inst.y + gpr_base);
                 break;
             }
         }
-        printf("\n");
-        printf("    lwz 0,20(1)\n");
-        printf("    mtlr 0\n");
-        printf("    addi 1,1,16\n");
-        printf("    blr\n");
+        fprintf(output, "\n");
+        fprintf(output, "    lwz 0,20(1)\n");
+        fprintf(output, "    mtlr 0\n");
+        fprintf(output, "    addi 1,1,16\n");
+        fprintf(output, "    blr\n");
     }
     for (size_t i = 0; i < ir.data.len; i++) {
         StaticVariable var = ir.data.data[i];
         String name = ir.symbols.data[var.name];
-        printf("data_");
+        fprintf(output, "data_");
         if (name.string != NULL)
-            printf("%.*s", PS(name));
+            fprintf(output, "%.*s", PS(name));
         else
-            printf("%zu", var.name);
-        printf(": .byte ");
-        for (size_t i = 0; i < var.data.length; i++) {
-            printf("%d, ", var.data.string[i]);
+            fprintf(output, "%zu", var.name);
+        fprintf(output, ": .byte ");
+        bool escape = false;
+        for (int i = 0; i < var.data.length; i++) {
+            char c = var.data.string[i];
+            if (escape) {
+                switch (c) {
+                case 'n':
+                    fprintf(output, "10, ");
+                    escape = false;
+                    break;
+                default: TODO();
+                }
+            } else {
+                if (var.data.string[i] == '\\') {
+                    escape = true;
+                } else {
+                    fprintf(output, "%d, ", var.data.string[i]);
+                }
+            }
         }
-        printf("0\n");
+        fprintf(output, "0\n");
     }
-    printf(".section    .note.GNU-stack,\"\",@progbits\n");
+    fprintf(output, ".section    .note.GNU-stack,\"\",@progbits\n");
 }
 
 int main(int argc, char *argv[]) {
@@ -233,14 +271,17 @@ int main(int argc, char *argv[]) {
         parse(&lex, &body);
 
     // dump_ast(body, 0);
-    IR ir = codegen(body);
+    CodeGenCTX *ctx = calloc(sizeof(CodeGenCTX), 1);
+    IR ir = codegen(body, ctx);
+    free_ctx(ctx);
+
     for (size_t i = 0; i < ir.functions.len; i++)
         ir.functions.data[i].temps_count = fold_temporaries(ir.functions.data[i].code);
     codegen_powerpc(ir, stdout);
-    free_ir(&ir);
 
     // it's not like you really need to free it
     // but i wanted to make ASAN and valgrind happy
+    free_ir(&ir);
     free_ast(&body);
     free(body.data);
     free(str.string);

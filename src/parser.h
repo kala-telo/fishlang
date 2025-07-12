@@ -3,19 +3,15 @@
 
 #include <stddef.h>
 #include <assert.h>
+#include <stdint.h>
 #include "lexer.h"
-
-#define TODO()                                                                 \
-    do {                                                                       \
-        fprintf(stderr, "%s:%d: TODO\n", __FILE__, __LINE__);                  \
-        abort();                                                               \
-    } while (0)
 
 typedef enum {
     AST_FUNCDEF,
     AST_CALL,
     AST_NAME,
     AST_STRING,
+    AST_NUMBER,
     AST_LIST,
 } ASTKind;
 
@@ -38,6 +34,7 @@ typedef struct _AST {
         String string; // AST_STRING
         String name; // AST_NAME
         ASTArr list; // AST_LIST
+        int64_t number;
     } as;
 } AST;
 

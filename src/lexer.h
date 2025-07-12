@@ -18,6 +18,7 @@ typedef enum {
     LEX_CBRAKET,
     LEX_NAME,
     LEX_STRING,
+    LEX_NUMBER,
     LEX_END,
 } TokenKind;
 

@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <inttypes.h>
 #include "lexer.h"
 #include "parser.h"
+#include "todo.h"
 #include "da.h"
 
 char *ast_names[] = {
@@ -17,6 +19,15 @@ Token expect(Token token, TokenKind expected) {
         abort();
     }
     return token;
+}
+
+int64_t s_atoi(String s) {
+    int64_t result = 0;
+    for (int len = 0; len < s.length; len++) {
+        result *= 10;
+        result += s.string[len]-'0';
+    }
+    return result;
 }
 
 void parse(Lexer *lex, ASTArr *parent) {
@@ -55,6 +66,10 @@ void parse(Lexer *lex, ASTArr *parent) {
         da_append(*parent, ((AST){.kind = AST_STRING}));
         da_last(*parent).as.string = t.str;
         break;
+    case LEX_NUMBER:
+        da_append(*parent, ((AST){.kind = AST_NUMBER}));
+        da_last(*parent).as.number = s_atoi(t.str);
+        break;
     case LEX_NAME:
         da_append(*parent, ((AST){.kind = AST_NAME}));
         da_last(*parent).as.name = t.str;
@@ -77,7 +92,7 @@ void parse(Lexer *lex, ASTArr *parent) {
 }
 
 void dump_ast(ASTArr arr, int indent) {
-    for (int i = 0; i < arr.len; i++) {
+    for (size_t i = 0; i < arr.len; i++) {
         AST ast = arr.data[i];
         switch (ast.kind) {
         case AST_CALL:
@@ -105,6 +120,9 @@ void dump_ast(ASTArr arr, int indent) {
         case AST_NAME:
             printf("%.*s", ast.as.string.length, ast.as.string.string);
             break;
+        case AST_NUMBER:
+            printf("%"PRId64" ", ast.as.number);
+            break;
         case AST_STRING:
             printf("\"%.*s\"", ast.as.string.length, ast.as.string.string);
             break;
@@ -115,7 +133,7 @@ void dump_ast(ASTArr arr, int indent) {
 }
 
 void free_ast(ASTArr *ast) {
-    for (int i = 0; i < ast->len; i++) {
+    for (size_t i = 0; i < ast->len; i++) {
         switch (ast->data[i].kind) {
         case AST_CALL:
             free_ast(&ast->data[i].as.call.args);
@@ -127,6 +145,7 @@ void free_ast(ASTArr *ast) {
             free_ast(&ast->data[i].as.list);
             break;
         case AST_NAME:
+        case AST_NUMBER:
         case AST_STRING:
             break;
         }

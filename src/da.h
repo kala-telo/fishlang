@@ -19,4 +19,6 @@
 
 #define da_last(xs) ((xs).data[(xs).len - 1])
 
+#define da_pop(xs) (assert((xs).len > 0), (xs).data[--(xs).len])
+
 #endif // DA_H
