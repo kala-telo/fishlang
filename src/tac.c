@@ -31,6 +31,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         }
         switch (tac.data[i].function) {
         // Binary
+        case TAC_LT:
         case TAC_ADD:
             last[tac.data[i].y] = i;
             if (first[tac.data[i].y] == -1)
@@ -75,6 +76,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     map = malloc(temps_count*sizeof(*map));
     memset(map, 0xff, temps_count*sizeof(*map));
 
+    uint16_t new_temps_count = 0;
     bool *used_registers = malloc(temps_count*sizeof(bool));
     for (size_t i = 1; i < temps_count; i++) {
         memset(used_registers, 0, temps_count*sizeof(bool));
@@ -87,6 +89,8 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         for (size_t j = 0; j < temps_count; j++) {
             if (!used_registers[j]) {
                 map[i] = j;
+                if (new_temps_count < j)
+                    new_temps_count = j; 
                 goto success;
             }
         }
@@ -109,6 +113,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         switch (tac.data[i].function) {
         // Binary
         case TAC_ADD:
+        case TAC_LT:
             REMAP(tac.data[i].y);
             /* fallthrough */
         // Unary
@@ -124,5 +129,5 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         }
     }
     #undef REMAP
-    return temps_count;
+    return new_temps_count;
 }

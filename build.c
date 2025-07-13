@@ -10,11 +10,14 @@
 #include <dirent.h>
 
 #define CC "cc "
-#define CFLAGS ""
+#define CFLAGS "-ggdb -Wall -Wextra"
 #define LD CC
 #define TARGET "fishc"
 #define AS "powerpc-unknown-linux-musl-as "
 #define PPC_LD "powerpc-unknown-linux-musl-gcc -static "
+
+#define RED "\033[31m"
+#define RESET "\033[0m"
 
 #define ARRLEN(xs) (sizeof(xs) / sizeof(*(xs)))
 
@@ -119,22 +122,19 @@ bool build_examples() {
                  de->d_name, asm_path);
         printf("$ %s\n", buffer);
         if (system(buffer) != 0) {
-            printf("Example `%s` failed to compile!\n", de->d_name);
+            printf(RED"Example `%s` failed to compile! "RESET"\n", de->d_name);
             continue;
         }
         snprintf(buffer, sizeof(buffer), AS " %s -o %s", asm_path, obj_path);
         printf("$ %s\n", buffer);
         if (system(buffer) != 0) {
-            printf("Example `%s` failed to assemble!\n", de->d_name);
+            printf(RED"Example `%s` failed to assemble!\n"RESET, de->d_name);
             continue;
         }
         snprintf(buffer, sizeof(buffer), PPC_LD " %s -o .build/examples/%.*s", obj_path, len - 4,
                  de->d_name);
         printf("$ %s\n", buffer);
-        if (system(buffer) != 0) {
-            printf("Example `%s` failed to assemble!\n", de->d_name);
-            continue;
-        }
+        system(buffer);
     }
     closedir(examples_dir);
     return false;

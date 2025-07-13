@@ -25,6 +25,10 @@ bool eat_char(Lexer *lex) {
     return true;
 }
 
+bool valid_name(char c) {
+    return isalnum(c) || c == '+' || c == '-' || c == '>' || c == '<';
+}
+
 // XXX: cache tokens maybe
 Token peek_token(Lexer *lex) {
     Lexer copy = *lex;
@@ -33,14 +37,13 @@ Token peek_token(Lexer *lex) {
 }
 
 Token next_token(Lexer *lex) {
-    if (lex->length < 1) {
-        return (Token){
-            .kind = LEX_END,
-            .str = (String){lex->position, 0},
-        };
-    }
     while (isspace(*lex->position)) {
-        if (!eat_char(lex)) goto fail;
+        if (!eat_char(lex)) {
+            return (Token){
+                .kind = LEX_END,
+                .str = (String){lex->position, 0},
+            };
+        }
     }
     switch (*lex->position) {
     case '(':
@@ -90,21 +93,7 @@ Token next_token(Lexer *lex) {
     }
     default:
         // Parsing word
-        if (isalpha(*lex->position) || *lex->position == '+') {
-            String word = {
-                .string = lex->position,
-                .length = 1,
-            };
-            if (!eat_char(lex)) goto fail;
-            while (isalnum(*lex->position)) {
-                word.length++;
-                if (!eat_char(lex)) goto fail;
-            }
-            return (Token){
-                .kind = LEX_NAME,
-                .str = word,
-            };
-        } else if (isdigit(*lex->position)) {
+        if (isdigit(*lex->position)) {
             String word = {
                 .string = lex->position,
                 .length = 1,
@@ -116,6 +105,20 @@ Token next_token(Lexer *lex) {
             }
             return (Token){
                 .kind = LEX_NUMBER,
+                .str = word,
+            };
+        } else if (valid_name(*lex->position)) {
+            String word = {
+                .string = lex->position,
+                .length = 1,
+            };
+            if (!eat_char(lex)) goto fail;
+            while (isalnum(*lex->position)) {
+                word.length++;
+                if (!eat_char(lex)) goto fail;
+            }
+            return (Token){
+                .kind = LEX_NAME,
                 .str = word,
             };
         }

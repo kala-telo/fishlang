@@ -12,6 +12,7 @@ typedef struct {
         TAC_CALL_REG,
         TAC_CALL_SYM,
         TAC_ADD,
+        TAC_LT,
     } function;
     uint32_t x, y;
 } TAC32;

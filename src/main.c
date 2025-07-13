@@ -73,6 +73,12 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                     ctx->ir.functions.data[ctx->current_function].code,
                     ((TAC32){++ctx->temp_num, TAC_ADD, da_pop(ctx->args_stack),
                              da_pop(ctx->args_stack)}));
+            } else if (string_eq(node.as.call.callee, S("<"))) {
+                if(node.as.call.args.len != 2) TODO();
+                da_append(
+                    ctx->ir.functions.data[ctx->current_function].code,
+                    ((TAC32){++ctx->temp_num, TAC_LT, da_pop(ctx->args_stack),
+                             da_pop(ctx->args_stack)}));
             } else {
                 for (size_t i = 0; i < node.as.call.args.len; i++) {
                     size_t base = ctx->args_stack.len-node.as.call.args.len;
@@ -128,6 +134,82 @@ void free_ir(IR *ir) {
     FREE(ir->symbols.data);
     FREE(ir->functions.data);
     #undef FREE
+}
+
+void codegen_debug(IR ir, FILE *output) {
+    for (size_t i = 0; i < ir.functions.len; i++) {
+        TAC32Arr func = ir.functions.data[i].code;
+        fprintf(output, "%.*s {\n",
+                PS(ir.symbols.data[ir.functions.data[i].name]));
+        int call_count = 0;
+        for (size_t j = 0; j < func.len; j++) {
+            TAC32 inst = func.data[j];
+            switch (inst.function) {
+            case TAC_CALL_REG:
+                TODO();
+                break;
+            case TAC_CALL_SYM:
+                fprintf(output, "    %.*s()\n", PS(ir.symbols.data[inst.x]));
+                call_count = 0;
+                break;
+            case TAC_CALL_PUSH:
+                fprintf(output, "    c%d = r%d\n", (call_count++),
+                        inst.x);
+                assert(call_count < 8);
+                break;
+            case TAC_LOAD_INT:
+                fprintf(output, "    r%d = %d\n", inst.result, inst.x);
+                break;
+            case TAC_LOAD_SYM:
+                if (ir.symbols.data[inst.x].string != NULL) {
+                    fprintf(output, "    r%d = [%.*s]\n", inst.result,
+                            PS(ir.symbols.data[inst.x]));
+                } else {
+                    fprintf(output, "    r%d = [data_%d]\n", inst.result, inst.x);
+                }
+                break;
+            case TAC_ADD:
+                fprintf(output, "    r%d = r%d + r%d\n", inst.result, inst.x,
+                        inst.y);
+                break;
+            case TAC_LT:
+                fprintf(output, "    r%d = r%d < r%d\n", inst.result, inst.x,
+                        inst.y);
+                break;
+            }
+        }
+        fprintf(output, "}\n");
+    }
+    for (size_t i = 0; i < ir.data.len; i++) {
+        StaticVariable var = ir.data.data[i];
+        String name = ir.symbols.data[var.name];
+        fprintf(output, "data_");
+        if (name.string != NULL)
+            fprintf(output, "%.*s", PS(name));
+        else
+            fprintf(output, "%zu", var.name);
+        fprintf(output, " { ");
+        bool escape = false;
+        for (int i = 0; i < var.data.length; i++) {
+            char c = var.data.string[i];
+            if (escape) {
+                switch (c) {
+                case 'n':
+                    fprintf(output, "10, ");
+                    escape = false;
+                    break;
+                default: TODO();
+                }
+            } else {
+                if (var.data.string[i] == '\\') {
+                    escape = true;
+                } else {
+                    fprintf(output, "%d, ", var.data.string[i]);
+                }
+            }
+        }
+        fprintf(output, "0 }\n");
+    }
 }
 
 void codegen_powerpc(IR ir, FILE *output) {
@@ -195,6 +277,13 @@ void codegen_powerpc(IR ir, FILE *output) {
             case TAC_ADD:
                 fprintf(output, "    add %d, %d, %d\n", inst.result + gpr_base,
                         inst.x + gpr_base, inst.y + gpr_base);
+                break;
+            case TAC_LT:
+                fprintf(output, "    cmpw %%cr0, %d, %d\n", inst.x + gpr_base,
+                        inst.y + gpr_base);
+                fprintf(output, "    mfcr %d\n", inst.result + gpr_base);
+                fprintf(output, "    rlwinm %d, %d, 2, 31, 1\n", inst.result + gpr_base,
+                        inst.result + gpr_base);
                 break;
             }
         }
@@ -271,13 +360,14 @@ int main(int argc, char *argv[]) {
         parse(&lex, &body);
 
     // dump_ast(body, 0);
-    CodeGenCTX *ctx = calloc(sizeof(CodeGenCTX), 1);
+    CodeGenCTX *ctx = calloc(1, sizeof(CodeGenCTX));
     IR ir = codegen(body, ctx);
     free_ctx(ctx);
 
     for (size_t i = 0; i < ir.functions.len; i++)
         ir.functions.data[i].temps_count = fold_temporaries(ir.functions.data[i].code);
     codegen_powerpc(ir, stdout);
+    // codegen_debug(ir, stdout);
 
     // it's not like you really need to free it
     // but i wanted to make ASAN and valgrind happy
