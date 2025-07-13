@@ -17,10 +17,10 @@ uint16_t fold_temporaries(TAC32Arr tac) {
             temps_count = tac.data[i].result + 1;
     }
 
-    int first[temps_count];
+    int *first = malloc(temps_count * sizeof(int));
     memset(first, 0xff, temps_count * sizeof(int));
 
-    int last[temps_count];
+    int *last = malloc(temps_count * sizeof(int));
     memset(last, 0xff, temps_count * sizeof(int));
 
     for (size_t i = 0; i < tac.len; i++) {
@@ -54,9 +54,11 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     struct {
         int *data;
         size_t len, capacity;
-    } graph[temps_count];
+    } *graph;
+    graph = malloc(sizeof(*graph)*temps_count);
 
-    memset(graph, 0, sizeof(graph));
+    memset(graph, 0, sizeof(*graph));
+
     for (size_t i = 1; i < temps_count; i++) {
         for (size_t j = 1; j < temps_count; j++) {
             if (ranges_intersect(first[i], last[i], first[j], last[j]) &&
@@ -64,15 +66,20 @@ uint16_t fold_temporaries(TAC32Arr tac) {
                 da_append(graph[i], j);
         }
     }
+    free(first);
+    first = NULL;
+    free(last);
+    last = NULL;
 
-    uint16_t map[temps_count];
+    uint16_t *map;
+    map = malloc(temps_count*sizeof(*map));
     memset(map, 0xff, temps_count*sizeof(*map));
 
+    bool *used_registers = malloc(temps_count*sizeof(bool));
     for (size_t i = 1; i < temps_count; i++) {
-        bool used_registers[temps_count];
         memset(used_registers, 0, temps_count*sizeof(bool));
         for (size_t j = 0; j < graph[i].len; j++) {
-            uint8_t color = map[graph[i].data[j]];
+                uint8_t color = map[graph[i].data[j]];
             if (color == 0xff)
                 continue;
             used_registers[color] = true;
@@ -88,11 +95,14 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     success:
         continue;
     }
+    free(used_registers);
 
     for (size_t i = 0; i < temps_count; i++) {
         free(graph[i].data);
         graph[i].data = NULL;
     }
+    free(graph);
+
     #define REMAP(x) (x) = (x) ? (uint32_t)map[(x)] : 0;
     for (size_t i = 0; i < tac.len; i++) {
         REMAP(tac.data[i].result);

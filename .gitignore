@@ -1,4 +1,4 @@
 fishc
-test.o
-test
-test.S
+a.out
+build
+*.o
