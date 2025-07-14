@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -48,6 +49,7 @@ typedef struct {
     IR ir;
     size_t current_function;
     uint16_t temp_num;
+    uint16_t branch_id;
     struct {
         uint32_t *data;
         size_t len, capacity;
@@ -66,20 +68,47 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
         AST node = ast.data[i];
         switch (node.kind) {
         case AST_CALL:
-            codegen(node.as.call.args, ctx);
             if (string_eq(node.as.call.callee, S("+"))) {
+                codegen(node.as.call.args, ctx);
                 if(node.as.call.args.len != 2) TODO();
                 da_append(
                     ctx->ir.functions.data[ctx->current_function].code,
                     ((TAC32){++ctx->temp_num, TAC_ADD, da_pop(ctx->args_stack),
                              da_pop(ctx->args_stack)}));
             } else if (string_eq(node.as.call.callee, S("<"))) {
+                codegen(node.as.call.args, ctx);
                 if(node.as.call.args.len != 2) TODO();
                 da_append(
                     ctx->ir.functions.data[ctx->current_function].code,
                     ((TAC32){++ctx->temp_num, TAC_LT, da_pop(ctx->args_stack),
                              da_pop(ctx->args_stack)}));
+            } else if (string_eq(node.as.call.callee, S("if"))) {
+                if (node.as.call.args.len != 3)
+                    TODO();
+                uint16_t branch_false = ++ctx->branch_id;
+                uint16_t branch_exit  = ++ctx->branch_id;
+
+                // condition
+                codegen((ASTArr){&node.as.call.args.data[0], 1, 0}, ctx);
+                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                          ((TAC32){0, TAC_BIZ, da_pop(ctx->args_stack),
+                                   branch_false}));
+
+                // if true
+                codegen((ASTArr){&node.as.call.args.data[1], 1, 0}, ctx);
+                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                          ((TAC32){0, TAC_GOTO, branch_exit, 0}));
+
+                // false
+                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                          ((TAC32){0, TAC_LABEL, branch_false, 0}));
+                codegen((ASTArr){&node.as.call.args.data[2], 1, 0}, ctx);
+
+                // epilouege
+                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                          ((TAC32){0, TAC_LABEL, branch_exit, 0}));
             } else {
+                codegen(node.as.call.args, ctx);
                 for (size_t i = 0; i < node.as.call.args.len; i++) {
                     size_t base = ctx->args_stack.len-node.as.call.args.len;
                     da_append(ctx->ir.functions.data[ctx->current_function].code,
@@ -175,6 +204,15 @@ void codegen_debug(IR ir, FILE *output) {
             case TAC_LT:
                 fprintf(output, "    r%d = r%d < r%d\n", inst.result, inst.x,
                         inst.y);
+                break;
+            case TAC_GOTO:
+                fprintf(output, "    b label_%d\n", inst.x);
+                break;
+            case TAC_BIZ:
+                fprintf(output, "    biz r%d, label_%d\n", inst.x, inst.y);
+                break;
+            case TAC_LABEL:
+                fprintf(output, "label_%d:\n", inst.x);
                 break;
             }
         }
@@ -284,6 +322,16 @@ void codegen_powerpc(IR ir, FILE *output) {
                 fprintf(output, "    mfcr %d\n", inst.result + gpr_base);
                 fprintf(output, "    rlwinm %d, %d, 2, 31, 1\n", inst.result + gpr_base,
                         inst.result + gpr_base);
+                break;
+            case TAC_LABEL:
+                fprintf(output, ".label%d:\n", inst.x);
+                break;
+            case TAC_GOTO:
+                fprintf(output, "    b .label%d\n", inst.x);
+                break;
+            case TAC_BIZ:
+                fprintf(output, "    cmpwi %d, 0\n", inst.x+gpr_base);
+                fprintf(output, "    beq .label%d\n", inst.y);
                 break;
             }
         }
