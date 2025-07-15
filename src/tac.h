@@ -11,6 +11,7 @@ typedef struct {
         TAC_CALL_PUSH,
         TAC_CALL_REG,
         TAC_CALL_SYM,
+        TAC_MOV,
         TAC_ADD,
         TAC_LABEL,
         TAC_GOTO,

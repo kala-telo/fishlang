@@ -41,6 +41,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         case TAC_CALL_REG:
         case TAC_CALL_PUSH:
         case TAC_BIZ:
+        case TAC_MOV:
             last[tac.data[i].x] = i;
             if (first[tac.data[i].x] == -1)
                 first[tac.data[i].x] = i;
@@ -123,6 +124,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         case TAC_CALL_REG:
         case TAC_CALL_PUSH:
         case TAC_BIZ:
+        case TAC_MOV:
             REMAP(tac.data[i].x);
             break;
         // Have no inputs as variables
