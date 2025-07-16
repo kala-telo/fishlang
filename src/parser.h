@@ -33,6 +33,10 @@ struct _AST {
     union {
         struct { // AST_FUNCDEF
             String name;
+            struct {
+                String *data;
+                size_t len, capacity;
+            } args;
             ASTArr body;
         } func;
         struct { // AST_CALL

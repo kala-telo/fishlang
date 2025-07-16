@@ -7,11 +7,13 @@
 typedef struct {
     uint32_t result;
     enum {
+        TAC_LOAD_ARG,
         TAC_LOAD_SYM,
         TAC_LOAD_INT,
         TAC_CALL_PUSH,
         TAC_CALL_REG,
         TAC_CALL_SYM,
+        TAC_RETURN_VAL,
         TAC_MOV,
         TAC_ADD,
         TAC_LABEL,

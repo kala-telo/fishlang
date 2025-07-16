@@ -9,8 +9,8 @@
 #include <stdint.h>
 #include <dirent.h>
 
-#define CC "cc "
-#define CFLAGS "-ggdb -Wall -Wextra"
+#define CC "clang "
+#define CFLAGS "-fsanitize=address -g -Wall -Wextra "
 #define LD CC
 #define TARGET "fishc"
 #define AS "powerpc-unknown-linux-musl-as "
@@ -24,7 +24,7 @@
 #define da_append_str(xs, x)                                                   \
     for (int da_append_str_i = 0; da_append_str_i < strlen(x);                 \
          da_append_str_i++) {                                                  \
-        da_append(link_command, x[da_append_str_i]);                           \
+        da_append(xs, x[da_append_str_i]);                                     \
     }
 
 static bool endswith(String str, String suf) {
@@ -79,6 +79,7 @@ bool link(String *files, size_t files_count) {
         size_t len, capacity;
     } link_command = {0};
     da_append_str(link_command, LD);
+    da_append_str(link_command, CFLAGS);
     for (size_t i = 0; i < files_count; i++) {
         char *o_file = c2o(files[i]);
         da_append_str(link_command, o_file);

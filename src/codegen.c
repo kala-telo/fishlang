@@ -15,6 +15,10 @@ void free_ctx(CodeGenCTX *ctx) {
         }                                                                      \
     } while (0)
     FREE(ctx->args_stack.data);
+    for (size_t i = 0; i < ctx->variables.length; i++) {
+        FREE(ctx->variables.table[i].data);
+    }
+    FREE(ctx->variables.table);
     FREE(ctx);
 #undef FREE
 }
@@ -27,8 +31,9 @@ void free_ir(IR *ir) {
             (x) = NULL;                                                        \
         }                                                                      \
     } while (0)
-    for (size_t i = 0; i < ir->functions.len; i++)
+    for (size_t i = 0; i < ir->functions.len; i++) {
         FREE(ir->functions.data[i].code.data);
+    }
     FREE(ir->data.data);
     FREE(ir->symbols.data);
     FREE(ir->functions.data);
@@ -49,6 +54,7 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                     ctx->ir.functions.data[ctx->current_function].code,
                     ((TAC32){++ctx->temp_num, TAC_ADD, da_pop(ctx->args_stack),
                              da_pop(ctx->args_stack)}));
+                da_append(ctx->args_stack, ctx->temp_num);
             } else if (string_eq(node.as.call.callee, S("<"))) {
                 codegen(node.as.call.args, ctx);
                 if (node.as.call.args.len != 2)
@@ -57,6 +63,7 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                     ctx->ir.functions.data[ctx->current_function].code,
                     ((TAC32){++ctx->temp_num, TAC_LT, da_pop(ctx->args_stack),
                              da_pop(ctx->args_stack)}));
+                da_append(ctx->args_stack, ctx->temp_num);
             } else if (string_eq(node.as.call.callee, S("if"))) {
                 if (node.as.call.args.len != 3)
                     TODO();
@@ -92,26 +99,41 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                 da_append(ctx->args_stack, result);
             } else {
                 codegen(node.as.call.args, ctx);
+                size_t base = ctx->args_stack.len - node.as.call.args.len;
                 for (size_t i = 0; i < node.as.call.args.len; i++) {
-                    size_t base = ctx->args_stack.len - node.as.call.args.len;
                     da_append(
                         ctx->ir.functions.data[ctx->current_function].code,
                         ((TAC32){0, TAC_CALL_PUSH,
                                  ctx->args_stack.data[base + i], 0}));
+                    ctx->args_stack.len--;
                 }
                 da_append(ctx->ir.symbols, node.as.call.callee);
                 da_append(ctx->ir.functions.data[ctx->current_function].code,
                           ((TAC32){++ctx->temp_num, TAC_CALL_SYM,
                                    ctx->ir.symbols.len - 1, 0}));
+                da_append(ctx->args_stack, ctx->temp_num);
             }
-            da_append(ctx->args_stack, ctx->temp_num);
             break;
         case AST_FUNCDEF:
+            // assert(ctx->args_stack.len == 0);
             da_append(ctx->ir.symbols, node.as.func.name);
             da_append(ctx->ir.functions,
                       ((StaticFunction){ctx->ir.symbols.len - 1, {0}, 0}));
             ctx->current_function = ctx->ir.functions.len - 1;
+            for (size_t j = 0; j < node.as.func.args.len; j++) {
+                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                          ((TAC32){++ctx->temp_num, TAC_LOAD_ARG,
+                                   j, 0}));
+                hmput(&ctx->variables, node.as.func.args.data[j],
+                      ctx->temp_num);
+            }
             codegen(node.as.func.body, ctx);
+            for (size_t j = 0; j < node.as.func.args.len; j++) {
+                hmput(&ctx->variables, node.as.func.args.data[j], HM_EMPTY);
+            }
+            da_append(ctx->ir.functions.data[ctx->current_function].code,
+                      ((TAC32){0, TAC_RETURN_VAL, da_pop(ctx->args_stack), 0}));
+            // assert(ctx->args_stack.len == 0);
             break;
         case AST_VARDEF:
             for (size_t j = 0; j < node.as.var.variables.len; j++) {
@@ -125,6 +147,8 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                 hmput(&ctx->variables, node.as.var.variables.data[j].name,
                       HM_EMPTY);
             }
+            da_append(ctx->ir.functions.data[ctx->current_function].code,
+                      ((TAC32){0, TAC_RETURN_VAL, da_pop(ctx->args_stack), 0}));
             break;
         case AST_LIST:
             TODO();
@@ -153,7 +177,8 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
         if (ctx->args_stack.len > args_stack_len) {
             ctx->args_stack.len = args_stack_len+1;
         } else {
-            TODO();
+            da_append(ctx->args_stack, 0);
+            assert(ctx->args_stack.len > args_stack_len);
         }
     }
     return ctx->ir;
@@ -173,7 +198,7 @@ void codegen_debug(IR ir, FILE *output) {
                 TODO();
                 break;
             case TAC_CALL_SYM:
-                fprintf(output, "    %.*s()\n", PS(ir.symbols.data[x]));
+                fprintf(output, "    r%d = %.*s()\n", r, PS(ir.symbols.data[x]));
                 call_count = 0;
                 break;
             case TAC_CALL_PUSH:
@@ -181,6 +206,9 @@ void codegen_debug(IR ir, FILE *output) {
                 break;
             case TAC_LOAD_INT:
                 fprintf(output, "    r%d = %d\n", r, x);
+                break;
+            case TAC_LOAD_ARG:
+                fprintf(output, "    r%d = arg%d\n", r, x);
                 break;
             case TAC_LOAD_SYM:
                 if (ir.symbols.data[x].string != NULL) {
@@ -207,6 +235,9 @@ void codegen_debug(IR ir, FILE *output) {
                 break;
             case TAC_LABEL:
                 fprintf(output, "label_%d:\n", x);
+                break;
+            case TAC_RETURN_VAL:
+                fprintf(output, "    ret = r%d:\n", x);
                 break;
             }
         }
@@ -264,10 +295,15 @@ void codegen_powerpc(IR ir, FILE *output) {
         fprintf(output, "%.*s:\n",
                 PS(ir.symbols.data[ir.functions.data[i].name]));
         int call_count = 0;
-        fprintf(output,
-                "    stwu 1,-16(1)\n"); // TODO: unhardcode 16-byte allocation
+        int stack_frame = 16+4*ir.functions.data[i].temps_count;
+        if (stack_frame%16 != 0)
+            stack_frame += 16 - stack_frame % 16;
+        fprintf(output, "    stwu 1,-%d(1)\n", stack_frame);
         fprintf(output, "    mflr 0\n");
-        fprintf(output, "    stw 0, 20(1)\n");
+        fprintf(output, "    stw 0, %d(1)\n", stack_frame+4);
+        for (int j = 0; j < ir.functions.data[i].temps_count; j++) {
+            fprintf(output, "    stw %d, %d(1)\n", j+gpr_base, stack_frame-j*4);
+        }
         fprintf(output, "\n");
         for (size_t j = 0; j < func.len; j++) {
             TAC32 inst = func.data[j];
@@ -279,6 +315,7 @@ void codegen_powerpc(IR ir, FILE *output) {
                 break;
             case TAC_CALL_SYM:
                 fprintf(output, "    bl %.*s\n", PS(ir.symbols.data[inst.x]));
+                fprintf(output, "    mr %d, 3\n", r);
                 call_count = 0;
                 break;
             case TAC_CALL_PUSH:
@@ -292,6 +329,9 @@ void codegen_powerpc(IR ir, FILE *output) {
                 } else {
                     TODO();
                 }
+                break;
+            case TAC_LOAD_ARG:
+                fprintf(output, "    mr %d, %d\n", r, inst.x + call_base);
                 break;
             case TAC_LOAD_SYM:
                 if (ir.symbols.data[inst.x].string != NULL) {
@@ -326,12 +366,18 @@ void codegen_powerpc(IR ir, FILE *output) {
                 fprintf(output, "    cmpwi %d, 0\n", x);
                 fprintf(output, "    beq .label%d\n", inst.y);
                 break;
+            case TAC_RETURN_VAL:
+                fprintf(output, "    mr 3, %d\n", x);
+                break;
             }
         }
         fprintf(output, "\n");
-        fprintf(output, "    lwz 0,20(1)\n");
+        for (int j = 0; j < ir.functions.data[i].temps_count; j++) {
+            fprintf(output, "    lwz %d, %d(1)\n", j+gpr_base, stack_frame-j*4);
+        }
+        fprintf(output, "    lwz 0, %d(1)\n", stack_frame+4);
         fprintf(output, "    mtlr 0\n");
-        fprintf(output, "    addi 1,1,16\n");
+        fprintf(output, "    addi 1,1,%d\n", stack_frame);
         fprintf(output, "    blr\n");
     }
     for (size_t i = 0; i < ir.data.len; i++) {

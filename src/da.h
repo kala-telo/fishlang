@@ -53,6 +53,8 @@ static inline uint32_t fnv_1(String str) {
 }
 
 static inline uint32_t hmget(HashMap hm, String key) {
+    if (hm.table == NULL)
+        return HM_EMPTY;
     Bucket bucket = hm.table[fnv_1(key) & (hm.length - 1)];
     for (size_t i = 0; i < bucket.len; i++) {
         if (string_eq(bucket.data[i].key, key)) {

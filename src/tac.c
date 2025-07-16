@@ -42,6 +42,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         case TAC_CALL_PUSH:
         case TAC_BIZ:
         case TAC_MOV:
+        case TAC_RETURN_VAL:
             last[tac.data[i].x] = i;
             if (first[tac.data[i].x] == -1)
                 first[tac.data[i].x] = i;
@@ -49,6 +50,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         // Have no inputs as variables
         case TAC_LOAD_INT:
         case TAC_LOAD_SYM:
+        case TAC_LOAD_ARG:
         case TAC_CALL_SYM:
         case TAC_GOTO:
         case TAC_LABEL:
@@ -60,9 +62,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         int *data;
         size_t len, capacity;
     } *graph;
-    graph = malloc(sizeof(*graph)*temps_count);
-
-    memset(graph, 0, sizeof(*graph));
+    graph = calloc(temps_count, sizeof(*graph));
 
     for (size_t i = 1; i < temps_count; i++) {
         for (size_t j = 1; j < temps_count; j++) {
@@ -123,6 +123,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         // Unary
         case TAC_CALL_REG:
         case TAC_CALL_PUSH:
+        case TAC_RETURN_VAL:
         case TAC_BIZ:
         case TAC_MOV:
             REMAP(tac.data[i].x);
@@ -130,6 +131,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         // Have no inputs as variables
         case TAC_LOAD_INT:
         case TAC_LOAD_SYM:
+        case TAC_LOAD_ARG:
         case TAC_CALL_SYM:
         case TAC_LABEL:
         case TAC_GOTO:
@@ -137,5 +139,6 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         }
     }
     #undef REMAP
+    free(map);
     return new_temps_count;
 }

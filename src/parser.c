@@ -37,7 +37,8 @@ void parse(Lexer *lex, ASTArr *parent) {
             func->as.func.name = t.str;
             expect(next_token(lex), LEX_OBRAKET);
             while (peek_token(lex).kind != LEX_CBRAKET) {
-                TODO();
+                t = expect(next_token(lex), LEX_NAME);
+                da_append(func->as.func.args, t.str);
             }
             expect(next_token(lex), LEX_CBRAKET);
             while (peek_token(lex).kind != LEX_CPAREN) {
@@ -109,13 +110,14 @@ void free_ast(ASTArr *ast) {
             break;
         case AST_FUNCDEF:
             free_ast(&ast->data[i].as.func.body);
+            free(ast->data[i].as.func.args.data);
             break;
         case AST_LIST:
             free_ast(&ast->data[i].as.list);
             break;
         case AST_VARDEF:
-            for (size_t i = 0; i < ast->data[i].as.var.variables.len; i++) {
-                free_ast(&ast->data[i].as.var.variables.data[i].value);
+            for (size_t j = 0; j < ast->data[i].as.var.variables.len; j++) {
+                free_ast(&ast->data[i].as.var.variables.data[j].value);
             }
             free(ast->data[i].as.var.variables.data);
             ast->data[i].as.var.variables.data = NULL;
