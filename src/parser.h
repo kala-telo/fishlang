@@ -6,8 +6,11 @@
 #include <stdint.h>
 #include "lexer.h"
 
+typedef struct _AST AST;
+
 typedef enum {
     AST_FUNCDEF,
+    AST_VARDEF,
     AST_CALL,
     AST_NAME,
     AST_STRING,
@@ -15,12 +18,17 @@ typedef enum {
     AST_LIST,
 } ASTKind;
 
-typedef struct _ASTArr {
+typedef struct {
     struct _AST *data;
     size_t len, capacity;
 } ASTArr;
 
-typedef struct _AST {
+typedef struct {
+    String name;
+    ASTArr value;
+} Variable;
+
+struct _AST {
     ASTKind kind;
     union {
         struct { // AST_FUNCDEF
@@ -34,9 +42,16 @@ typedef struct _AST {
         String string; // AST_STRING
         String name; // AST_NAME
         ASTArr list; // AST_LIST
-        int64_t number;
+        int64_t number; // AST_NUMBER
+        struct { // AST_VARDEF
+            struct {
+                Variable *data;
+                size_t len, capacity;
+            } variables;
+            ASTArr body;
+        } var;
     } as;
-} AST;
+};
 
 void parse(Lexer *lex, ASTArr *parent);
 void free_ast(ASTArr *ast);

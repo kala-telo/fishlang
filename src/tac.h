@@ -2,6 +2,7 @@
 #include <stddef.h>
 
 #ifndef TAC_H
+#define TAC_H
 
 typedef struct {
     uint32_t result;

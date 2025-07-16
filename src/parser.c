@@ -6,13 +6,6 @@
 #include "todo.h"
 #include "da.h"
 
-char *ast_names[] = {
-    [AST_FUNCDEF] = "funcdef",
-    [AST_CALL] = "call",
-    [AST_NAME] = "name",
-    [AST_STRING] = "string",
-};
-
 Token expect(Token token, TokenKind expected) {
     if (token.kind != expected) {
         fprintf(stderr, "Expected %s, got %s\n", tok_names[expected], tok_names[token.kind]);
@@ -49,6 +42,23 @@ void parse(Lexer *lex, ASTArr *parent) {
             expect(next_token(lex), LEX_CBRAKET);
             while (peek_token(lex).kind != LEX_CPAREN) {
                 parse(lex, &func->as.func.body);
+            }
+       } else if(string_eq(S("let"), t.str)) {
+            da_append(*parent, ((AST){
+                .kind = AST_VARDEF,
+            }));
+            AST *vars = &da_last(*parent);
+            expect(next_token(lex), LEX_OBRAKET);
+            while (peek_token(lex).kind != LEX_CBRAKET) {
+                expect(next_token(lex), LEX_OPAREN);
+                t = expect(next_token(lex), LEX_NAME);
+                da_append(vars->as.var.variables, ((Variable){t.str, { 0 }}));
+                parse(lex, &da_last(vars->as.var.variables).value);
+                expect(next_token(lex), LEX_CPAREN);
+            }
+            expect(next_token(lex), LEX_CBRAKET);
+            while (peek_token(lex).kind != LEX_CPAREN) {
+                parse(lex, &vars->as.var.body);
             }
        } else {
             da_append(*parent, ((AST){
@@ -91,47 +101,6 @@ void parse(Lexer *lex, ASTArr *parent) {
     }
 }
 
-void dump_ast(ASTArr arr, int indent) {
-    for (size_t i = 0; i < arr.len; i++) {
-        AST ast = arr.data[i];
-        switch (ast.kind) {
-        case AST_CALL:
-            if (indent > 0)
-                putchar('\n');
-            for (int j = 0; j < indent*4; j++) {
-                putchar(' ');
-            }
-            printf("(%s *%.*s* ", ast_names[ast.kind], ast.as.call.callee.length,
-                   ast.as.call.callee.string);
-            dump_ast(ast.as.call.args, indent+1);
-            putchar(')');
-            break;
-        case AST_FUNCDEF:
-            printf("(%s *%.*s* ", ast_names[ast.kind], ast.as.func.name.length,
-                   ast.as.func.name.string);
-            dump_ast(ast.as.func.body, indent+1);
-            putchar(')');
-            break;
-        case AST_LIST:
-            putchar('[');
-            dump_ast(ast.as.func.body, indent+1);
-            putchar(']');
-            break;
-        case AST_NAME:
-            printf("%.*s", ast.as.string.length, ast.as.string.string);
-            break;
-        case AST_NUMBER:
-            printf("%"PRId64" ", ast.as.number);
-            break;
-        case AST_STRING:
-            printf("\"%.*s\"", ast.as.string.length, ast.as.string.string);
-            break;
-        }
-    }
-    if (indent == 0)
-        putchar('\n');
-}
-
 void free_ast(ASTArr *ast) {
     for (size_t i = 0; i < ast->len; i++) {
         switch (ast->data[i].kind) {
@@ -143,6 +112,14 @@ void free_ast(ASTArr *ast) {
             break;
         case AST_LIST:
             free_ast(&ast->data[i].as.list);
+            break;
+        case AST_VARDEF:
+            for (size_t i = 0; i < ast->data[i].as.var.variables.len; i++) {
+                free_ast(&ast->data[i].as.var.variables.data[i].value);
+            }
+            free(ast->data[i].as.var.variables.data);
+            ast->data[i].as.var.variables.data = NULL;
+            free_ast(&ast->data[i].as.var.body);
             break;
         case AST_NAME:
         case AST_NUMBER:
