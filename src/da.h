@@ -28,7 +28,7 @@
 
 typedef struct {
     String key;
-    uint32_t value;
+    uintptr_t value;
 } HMEntry;
 
 typedef struct {
@@ -41,7 +41,7 @@ typedef struct {
     size_t length;
 } HashMap;
 
-#define HM_EMPTY (~(uint32_t)0)
+#define HM_EMPTY (~(uintptr_t)0)
 
 static inline uint32_t fnv_1(String str) {
     uint32_t hash = 0x811c9dc5;
@@ -52,7 +52,7 @@ static inline uint32_t fnv_1(String str) {
     return hash;
 }
 
-static inline uint32_t hmget(HashMap hm, String key) {
+static inline uintptr_t hmget(HashMap hm, String key) {
     if (hm.table == NULL)
         return HM_EMPTY;
     Bucket bucket = hm.table[fnv_1(key) & (hm.length - 1)];
@@ -64,7 +64,7 @@ static inline uint32_t hmget(HashMap hm, String key) {
     return HM_EMPTY;
 }
 
-static inline void hmput(HashMap* restrict hm, String key, uint32_t value) {
+static inline void hmput(HashMap* restrict hm, String key, uintptr_t value) {
     if (hm->table == NULL) {
         // 64 is a nice constant, power of 2, should be enough
         // for variables

@@ -1,3 +1,6 @@
+(extern puts)
+(extern printf)
+
 (defun main []
   (if (< 2 1)
     (puts "true")

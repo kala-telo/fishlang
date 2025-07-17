@@ -1,14 +1,15 @@
+#include "parser.h"
+#include "da.h"
+#include "lexer.h"
+#include "todo.h"
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <inttypes.h>
-#include "lexer.h"
-#include "parser.h"
-#include "todo.h"
-#include "da.h"
 
 Token expect(Token token, TokenKind expected) {
     if (token.kind != expected) {
-        fprintf(stderr, "Expected %s, got %s\n", tok_names[expected], tok_names[token.kind]);
+        fprintf(stderr, "Expected %s, got %s\n", tok_names[expected],
+                tok_names[token.kind]);
         abort();
     }
     return token;
@@ -18,7 +19,7 @@ int64_t s_atoi(String s) {
     int64_t result = 0;
     for (int len = 0; len < s.length; len++) {
         result *= 10;
-        result += s.string[len]-'0';
+        result += s.string[len] - '0';
     }
     return result;
 }
@@ -29,9 +30,7 @@ void parse(Lexer *lex, ASTArr *parent) {
     case LEX_OPAREN: {
         Token t = expect(next_token(lex), LEX_NAME);
         if (string_eq(S("defun"), t.str)) {
-            da_append(*parent, ((AST){
-                .kind = AST_FUNCDEF,
-            }));
+            da_append(*parent, ((AST){AST_FUNCDEF, {0}}));
             AST *func = &da_last(*parent);
             t = expect(next_token(lex), LEX_NAME);
             func->as.func.name = t.str;
@@ -44,16 +43,14 @@ void parse(Lexer *lex, ASTArr *parent) {
             while (peek_token(lex).kind != LEX_CPAREN) {
                 parse(lex, &func->as.func.body);
             }
-       } else if(string_eq(S("let"), t.str)) {
-            da_append(*parent, ((AST){
-                .kind = AST_VARDEF,
-            }));
+        } else if (string_eq(S("let"), t.str)) {
+            da_append(*parent, ((AST){AST_VARDEF, {0}}));
             AST *vars = &da_last(*parent);
             expect(next_token(lex), LEX_OBRAKET);
             while (peek_token(lex).kind != LEX_CBRAKET) {
                 expect(next_token(lex), LEX_OPAREN);
                 t = expect(next_token(lex), LEX_NAME);
-                da_append(vars->as.var.variables, ((Variable){t.str, { 0 }}));
+                da_append(vars->as.var.variables, ((Variable){t.str, {0}}));
                 parse(lex, &da_last(vars->as.var.variables).value);
                 expect(next_token(lex), LEX_CPAREN);
             }
@@ -61,10 +58,11 @@ void parse(Lexer *lex, ASTArr *parent) {
             while (peek_token(lex).kind != LEX_CPAREN) {
                 parse(lex, &vars->as.var.body);
             }
-       } else {
-            da_append(*parent, ((AST){
-                .kind = AST_CALL,
-            }));
+        } else if (string_eq(S("extern"), t.str)) {
+            da_append(*parent, ((AST){AST_EXTERN, {0}}));
+            da_last(*parent).as.exteral = expect(next_token(lex), LEX_NAME).str;
+        } else {
+            da_append(*parent, ((AST){AST_CALL, {0}}));
             AST *call = &da_last(*parent);
             call->as.call.callee = t.str;
             while (peek_token(lex).kind != LEX_CPAREN) {
@@ -86,9 +84,7 @@ void parse(Lexer *lex, ASTArr *parent) {
         da_last(*parent).as.name = t.str;
         break;
     case LEX_OBRAKET: {
-        da_append(*parent, ((AST){
-            .kind = AST_LIST,
-        }));
+        da_append(*parent, ((AST){AST_LIST, {0}}));
         AST *list = &da_last(*parent);
         while (peek_token(lex).kind != LEX_CBRAKET) {
             parse(lex, &list->as.list);
@@ -124,6 +120,7 @@ void free_ast(ASTArr *ast) {
             free_ast(&ast->data[i].as.var.body);
             break;
         case AST_NAME:
+        case AST_EXTERN:
         case AST_NUMBER:
         case AST_STRING:
             break;
@@ -134,4 +131,3 @@ void free_ast(ASTArr *ast) {
     ast->capacity = 0;
     ast->len = 0;
 }
-

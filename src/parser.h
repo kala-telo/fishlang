@@ -11,6 +11,7 @@ typedef struct _AST AST;
 typedef enum {
     AST_FUNCDEF,
     AST_VARDEF,
+    AST_EXTERN,
     AST_CALL,
     AST_NAME,
     AST_STRING,
@@ -54,6 +55,7 @@ struct _AST {
             } variables;
             ASTArr body;
         } var;
+        String exteral; // AST_EXTERN
     } as;
 };
 

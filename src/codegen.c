@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <sys/types.h>
 #include "codegen.h"
 #include "parser.h"
 #include "string.h"
@@ -19,6 +20,10 @@ void free_ctx(CodeGenCTX *ctx) {
         FREE(ctx->variables.table[i].data);
     }
     FREE(ctx->variables.table);
+    for (size_t i = 0; i < ctx->global_symbols.length; i++) {
+        FREE(ctx->global_symbols.table[i].data);
+    }
+    FREE(ctx->global_symbols.table);
     FREE(ctx);
 #undef FREE
 }
@@ -45,13 +50,18 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
         AST node = ast.data[i];
         size_t args_stack_len = ctx->args_stack.len;
         switch (node.kind) {
+        case AST_EXTERN:
+            da_append(ctx->ir.symbols, node.as.exteral);
+            hmput(&ctx->global_symbols, node.as.exteral, ctx->ir.symbols.len-1);
+            break;
         case AST_CALL:
+            assert(ctx->current_function != NULL);
             if (string_eq(node.as.call.callee, S("+"))) {
                 codegen(node.as.call.args, ctx);
                 if (node.as.call.args.len != 2)
                     TODO();
                 da_append(
-                    ctx->ir.functions.data[ctx->current_function].code,
+                    ctx->current_function->code,
                     ((TAC32){++ctx->temp_num, TAC_ADD, da_pop(ctx->args_stack),
                              da_pop(ctx->args_stack)}));
                 da_append(ctx->args_stack, ctx->temp_num);
@@ -60,7 +70,7 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                 if (node.as.call.args.len != 2)
                     TODO();
                 da_append(
-                    ctx->ir.functions.data[ctx->current_function].code,
+                    ctx->current_function->code,
                     ((TAC32){++ctx->temp_num, TAC_LT, da_pop(ctx->args_stack),
                              da_pop(ctx->args_stack)}));
                 da_append(ctx->args_stack, ctx->temp_num);
@@ -72,29 +82,29 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
 
                 // condition
                 codegen((ASTArr){&node.as.call.args.data[0], 1, 0}, ctx);
-                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                da_append(ctx->current_function->code,
                           ((TAC32){0, TAC_BIZ, da_pop(ctx->args_stack),
                                    branch_false}));
 
                 uint32_t result = ++ctx->temp_num;
                 // if true
                 codegen((ASTArr){&node.as.call.args.data[1], 1, 0}, ctx);
-                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                da_append(ctx->current_function->code,
                           ((TAC32){0, TAC_GOTO, branch_exit, 0}));
                 uint32_t result_1 = da_pop(ctx->args_stack);
-                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                da_append(ctx->current_function->code,
                           ((TAC32){result, TAC_MOV, result_1, 0}));
 
                 // false
-                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                da_append(ctx->current_function->code,
                           ((TAC32){0, TAC_LABEL, branch_false, 0}));
                 codegen((ASTArr){&node.as.call.args.data[2], 1, 0}, ctx);
                 uint32_t result_2 = da_pop(ctx->args_stack);
-                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                da_append(ctx->current_function->code,
                           ((TAC32){result, TAC_MOV, result_2, 0}));
 
                 // epilouege
-                da_append(ctx->ir.functions.data[ctx->current_function].code,
+                da_append(ctx->current_function->code,
                           ((TAC32){0, TAC_LABEL, branch_exit, 0}));
                 da_append(ctx->args_stack, result);
             } else {
@@ -102,28 +112,38 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                 size_t base = ctx->args_stack.len - node.as.call.args.len;
                 for (size_t i = 0; i < node.as.call.args.len; i++) {
                     da_append(
-                        ctx->ir.functions.data[ctx->current_function].code,
+                        ctx->current_function->code,
                         ((TAC32){0, TAC_CALL_PUSH,
                                  ctx->args_stack.data[base + i], 0}));
                     ctx->args_stack.len--;
                 }
                 da_append(ctx->ir.symbols, node.as.call.callee);
-                da_append(ctx->ir.functions.data[ctx->current_function].code,
-                          ((TAC32){++ctx->temp_num, TAC_CALL_SYM,
-                                   ctx->ir.symbols.len - 1, 0}));
+                if (hmget(ctx->global_symbols, node.as.call.callee) == HM_EMPTY) {
+                    uintptr_t f = hmget(ctx->variables, node.as.call.callee);
+                    assert(f != HM_EMPTY);
+                    da_append(ctx->current_function->code,
+                              ((TAC32){++ctx->temp_num, TAC_CALL_REG,
+                                       (uint32_t)f, 0}));
+                } else {
+                    da_append(ctx->current_function->code,
+                              ((TAC32){++ctx->temp_num, TAC_CALL_SYM,
+                                       ctx->ir.symbols.len - 1, 0}));
+                }
                 da_append(ctx->args_stack, ctx->temp_num);
             }
             break;
-        case AST_FUNCDEF:
+        case AST_FUNCDEF: {
             // assert(ctx->args_stack.len == 0);
+            StaticFunction *prev_func = ctx->current_function;
             da_append(ctx->ir.symbols, node.as.func.name);
+            hmput(&ctx->global_symbols, node.as.func.name,
+                  ctx->ir.symbols.len - 1);
             da_append(ctx->ir.functions,
                       ((StaticFunction){ctx->ir.symbols.len - 1, {0}, 0}));
-            ctx->current_function = ctx->ir.functions.len - 1;
+            ctx->current_function = &da_last(ctx->ir.functions);
             for (size_t j = 0; j < node.as.func.args.len; j++) {
-                da_append(ctx->ir.functions.data[ctx->current_function].code,
-                          ((TAC32){++ctx->temp_num, TAC_LOAD_ARG,
-                                   j, 0}));
+                da_append(ctx->current_function->code,
+                          ((TAC32){++ctx->temp_num, TAC_LOAD_ARG, j, 0}));
                 hmput(&ctx->variables, node.as.func.args.data[j],
                       ctx->temp_num);
             }
@@ -131,11 +151,13 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
             for (size_t j = 0; j < node.as.func.args.len; j++) {
                 hmput(&ctx->variables, node.as.func.args.data[j], HM_EMPTY);
             }
-            da_append(ctx->ir.functions.data[ctx->current_function].code,
+            da_append(ctx->current_function->code,
                       ((TAC32){0, TAC_RETURN_VAL, da_pop(ctx->args_stack), 0}));
+            ctx->current_function = prev_func;
             // assert(ctx->args_stack.len == 0);
-            break;
+        } break;
         case AST_VARDEF:
+            assert(ctx->current_function != NULL);
             for (size_t j = 0; j < node.as.var.variables.len; j++) {
                 codegen(node.as.var.variables.data[j].value, ctx);
                 hmput(&ctx->variables, node.as.var.variables.data[j].name,
@@ -147,28 +169,39 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                 hmput(&ctx->variables, node.as.var.variables.data[j].name,
                       HM_EMPTY);
             }
-            da_append(ctx->ir.functions.data[ctx->current_function].code,
+            da_append(ctx->current_function->code,
                       ((TAC32){0, TAC_RETURN_VAL, da_pop(ctx->args_stack), 0}));
             break;
         case AST_LIST:
+            assert(ctx->current_function != NULL);
             TODO();
             break;
         case AST_NAME: {
-            uint32_t var = hmget(ctx->variables, node.as.name);
-            assert(var != HM_EMPTY);
-            da_append(ctx->args_stack, var);
+            assert(ctx->current_function != NULL);
+            uintptr_t var = hmget(ctx->variables, node.as.name);
+            if (var != HM_EMPTY) {
+                da_append(ctx->args_stack, var);
+                break;
+            }
+            uintptr_t symbol = hmget(ctx->global_symbols, node.as.name);
+            assert(symbol != HM_EMPTY);
+            da_append(ctx->current_function->code,
+                      ((TAC32){++ctx->temp_num, TAC_LOAD_SYM, symbol, 0}));
+            da_append(ctx->args_stack, ctx->temp_num);
         } break;
         case AST_NUMBER:
+            assert(ctx->current_function != NULL);
             da_append(
-                ctx->ir.functions.data[ctx->current_function].code,
+                ctx->current_function->code,
                 ((TAC32){++ctx->temp_num, TAC_LOAD_INT, node.as.number, 0}));
             da_append(ctx->args_stack, ctx->temp_num);
             break;
         case AST_STRING:
+            assert(ctx->current_function != NULL);
             da_append(ctx->ir.symbols, (String){0});
             da_append(ctx->ir.data, ((StaticVariable){ctx->ir.symbols.len - 1,
                                                       node.as.string}));
-            da_append(ctx->ir.functions.data[ctx->current_function].code,
+            da_append(ctx->current_function->code,
                       ((TAC32){++ctx->temp_num, TAC_LOAD_SYM,
                                ctx->ir.symbols.len - 1, 0}));
             da_append(ctx->args_stack, ctx->temp_num);
@@ -195,7 +228,7 @@ void codegen_debug(IR ir, FILE *output) {
             uint32_t r = inst.result, x = inst.x, y = inst.y;
             switch (inst.function) {
             case TAC_CALL_REG:
-                TODO();
+                fprintf(output, "    r%d = r%d()\n", r, x);
                 break;
             case TAC_CALL_SYM:
                 fprintf(output, "    r%d = %.*s()\n", r, PS(ir.symbols.data[x]));
@@ -311,7 +344,9 @@ void codegen_powerpc(IR ir, FILE *output) {
                      y = inst.y + gpr_base;
             switch (inst.function) {
             case TAC_CALL_REG:
-                TODO();
+                fprintf(output, "    mtctr %d\n", x);
+                fprintf(output, "    bctrl\n");
+                fprintf(output, "    mr %d, 3\n", r);
                 break;
             case TAC_CALL_SYM:
                 fprintf(output, "    bl %.*s\n", PS(ir.symbols.data[inst.x]));
@@ -411,5 +446,5 @@ void codegen_powerpc(IR ir, FILE *output) {
         }
         fprintf(output, "0\n");
     }
-    fprintf(output, ".section    .note.GNU-stack,\"\",@progbits\n");
+    fprintf(output, ".section .note.GNU-stack,\"\",@progbits\n");
 }

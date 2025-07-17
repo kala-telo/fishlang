@@ -45,7 +45,8 @@ typedef struct {
 
 typedef struct {
     IR ir;
-    size_t current_function;
+    StaticFunction *current_function;
+    HashMap global_symbols;
     uint16_t temp_num;
     uint16_t branch_id;
     struct {
