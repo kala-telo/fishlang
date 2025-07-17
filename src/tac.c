@@ -33,6 +33,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         // Binary
         case TAC_LT:
         case TAC_ADD:
+        case TAC_SUB:
             last[tac.data[i].y] = i;
             if (first[tac.data[i].y] == -1)
                 first[tac.data[i].y] = i;
@@ -117,6 +118,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         switch (tac.data[i].function) {
         // Binary
         case TAC_ADD:
+        case TAC_SUB:
         case TAC_LT:
             REMAP(tac.data[i].y);
             /* fallthrough */

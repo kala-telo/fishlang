@@ -65,7 +65,17 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                     ((TAC32){++ctx->temp_num, TAC_ADD, da_pop(ctx->args_stack),
                              da_pop(ctx->args_stack)}));
                 da_append(ctx->args_stack, ctx->temp_num);
-            } else if (string_eq(node.as.call.callee, S("<"))) {
+            } else if (string_eq(node.as.call.callee, S("-"))) {
+                  codegen(node.as.call.args, ctx);
+                if (node.as.call.args.len != 2)
+                    TODO();
+                uint16_t y = da_pop(ctx->args_stack);
+                uint16_t x = da_pop(ctx->args_stack);
+                da_append(
+                    ctx->current_function->code,
+                    ((TAC32){++ctx->temp_num, TAC_SUB, x, y}));
+                da_append(ctx->args_stack, ctx->temp_num);
+          } else if (string_eq(node.as.call.callee, S("<"))) {
                 codegen(node.as.call.args, ctx);
                 if (node.as.call.args.len != 2)
                     TODO();
@@ -89,11 +99,11 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                 uint32_t result = ++ctx->temp_num;
                 // if true
                 codegen((ASTArr){&node.as.call.args.data[1], 1, 0}, ctx);
-                da_append(ctx->current_function->code,
-                          ((TAC32){0, TAC_GOTO, branch_exit, 0}));
                 uint32_t result_1 = da_pop(ctx->args_stack);
                 da_append(ctx->current_function->code,
                           ((TAC32){result, TAC_MOV, result_1, 0}));
+                da_append(ctx->current_function->code,
+                          ((TAC32){0, TAC_GOTO, branch_exit, 0}));
 
                 // false
                 da_append(ctx->current_function->code,
@@ -257,6 +267,9 @@ void codegen_debug(IR ir, FILE *output) {
             case TAC_ADD:
                 fprintf(output, "    r%d = r%d + r%d\n", r, x, y);
                 break;
+            case TAC_SUB:
+                fprintf(output, "    r%d = r%d - r%d\n", r, x, y);
+                break;
             case TAC_LT:
                 fprintf(output, "    r%d = r%d < r%d\n", r, x, y);
                 break;
@@ -321,7 +334,7 @@ void codegen_powerpc(IR ir, FILE *output) {
     for (size_t i = 0; i < ir.functions.len; i++) {
         TAC32Arr func = ir.functions.data[i].code;
         // 19 is the amount of nonvolatile registers on powerpc
-        if (ir.functions.data[i].temps_count > 19)
+        if (ir.functions.data[i].temps_count > 18)
             TODO();
         fprintf(output, ".global %.*s\n",
                 PS(ir.symbols.data[ir.functions.data[i].name]));
@@ -386,10 +399,13 @@ void codegen_powerpc(IR ir, FILE *output) {
             case TAC_ADD:
                 fprintf(output, "    add %d, %d, %d\n", r, x, y);
                 break;
+            case TAC_SUB:
+                fprintf(output, "    sub %d, %d, %d\n", r, x, y);
+                break;
             case TAC_LT:
                 fprintf(output, "    cmpw %%cr0, %d, %d\n", x, y);
                 fprintf(output, "    mfcr %d\n", r);
-                fprintf(output, "    rlwinm %d, %d, 2, 31, 1\n", r, r);
+                fprintf(output, "    rlwinm %d, %d, 2, 31, 31\n", r, r);
                 break;
             case TAC_LABEL:
                 fprintf(output, ".label%d:\n", inst.x);

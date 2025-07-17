@@ -26,7 +26,7 @@ bool eat_char(Lexer *lex) {
 }
 
 bool valid_name(char c) {
-    return isalnum(c) || c == '+' || c == '-' || c == '>' || c == '<';
+    return isalnum(c) || c == '+' || c == '-' || c == '>' || c == '<' || c == '=';
 }
 
 // XXX: cache tokens maybe

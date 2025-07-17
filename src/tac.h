@@ -16,6 +16,7 @@ typedef struct {
         TAC_RETURN_VAL,
         TAC_MOV,
         TAC_ADD,
+        TAC_SUB,
         TAC_LABEL,
         TAC_GOTO,
         TAC_BIZ,
