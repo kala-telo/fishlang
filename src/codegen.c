@@ -451,6 +451,34 @@ void codegen_powerpc(IR ir, FILE *output) {
                     fprintf(output, "10, ");
                     escape = false;
                     break;
+                case '"':
+                    fprintf(output, "34, ");
+                    escape = false;
+                    break;
+                case 'r':
+                    fprintf(output, "13, ");
+                    escape = false;
+                    break;
+                case 't':
+                    fprintf(output, "9, ");
+                    escape = false;
+                    break;
+                case 'b':
+                    fprintf(output, "8, ");
+                    escape = false;
+                    break;
+                case 'a':
+                    fprintf(output, "7, ");
+                    escape = false;
+                    break;
+                case '0':
+                    fprintf(output, "0, ");
+                    escape = false;
+                    break;
+                case '\\':
+                    fprintf(output, "92, ");
+                    escape = false;
+                    break;
                 default:
                     TODO();
                 }
