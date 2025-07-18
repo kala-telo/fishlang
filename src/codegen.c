@@ -51,8 +51,9 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
         size_t args_stack_len = ctx->args_stack.len;
         switch (node.kind) {
         case AST_EXTERN:
-            da_append(ctx->ir.symbols, node.as.exteral);
-            hmput(&ctx->global_symbols, node.as.exteral, ctx->ir.symbols.len-1);
+            da_append(ctx->ir.symbols, node.as.external.name);
+            hmput(&ctx->global_symbols, node.as.external.name, ctx->ir.symbols.len-1);
+            // TODO
             break;
         case AST_CALL:
             assert(ctx->current_function != NULL);
@@ -79,10 +80,10 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                 codegen(node.as.call.args, ctx);
                 if (node.as.call.args.len != 2)
                     TODO();
-                da_append(
-                    ctx->current_function->code,
-                    ((TAC32){++ctx->temp_num, TAC_LT, da_pop(ctx->args_stack),
-                             da_pop(ctx->args_stack)}));
+                uint16_t y = da_pop(ctx->args_stack);
+                uint16_t x = da_pop(ctx->args_stack);
+                da_append(ctx->current_function->code,
+                          ((TAC32){++ctx->temp_num, TAC_LT, x, y}));
                 da_append(ctx->args_stack, ctx->temp_num);
             } else if (string_eq(node.as.call.callee, S("if"))) {
                 if (node.as.call.args.len != 3)
@@ -154,12 +155,12 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
             for (size_t j = 0; j < node.as.func.args.len; j++) {
                 da_append(ctx->current_function->code,
                           ((TAC32){++ctx->temp_num, TAC_LOAD_ARG, j, 0}));
-                hmput(&ctx->variables, node.as.func.args.data[j],
+                hmput(&ctx->variables, node.as.func.args.data[j].name,
                       ctx->temp_num);
             }
             codegen(node.as.func.body, ctx);
             for (size_t j = 0; j < node.as.func.args.len; j++) {
-                hmput(&ctx->variables, node.as.func.args.data[j], HM_EMPTY);
+                hmput(&ctx->variables, node.as.func.args.data[j].name, HM_EMPTY);
             }
             da_append(ctx->current_function->code,
                       ((TAC32){0, TAC_RETURN_VAL, da_pop(ctx->args_stack), 0}));
@@ -170,14 +171,15 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
             assert(ctx->current_function != NULL);
             for (size_t j = 0; j < node.as.var.variables.len; j++) {
                 codegen(node.as.var.variables.data[j].value, ctx);
-                hmput(&ctx->variables, node.as.var.variables.data[j].name,
+                hmput(&ctx->variables,
+                      node.as.var.variables.data[j].definition.name,
                       da_pop(ctx->args_stack));
             }
             codegen(node.as.var.body, ctx);
             for (size_t j = 0; j < node.as.var.variables.len; j++) {
                 codegen(node.as.var.variables.data[j].value, ctx);
-                hmput(&ctx->variables, node.as.var.variables.data[j].name,
-                      HM_EMPTY);
+                hmput(&ctx->variables,
+                      node.as.var.variables.data[j].definition.name, HM_EMPTY);
             }
             da_append(ctx->current_function->code,
                       ((TAC32){0, TAC_RETURN_VAL, da_pop(ctx->args_stack), 0}));
@@ -283,7 +285,7 @@ void codegen_debug(IR ir, FILE *output) {
                 fprintf(output, "label_%d:\n", x);
                 break;
             case TAC_RETURN_VAL:
-                fprintf(output, "    ret = r%d:\n", x);
+                fprintf(output, "    ret = r%d\n", x);
                 break;
             }
         }
@@ -403,7 +405,7 @@ void codegen_powerpc(IR ir, FILE *output) {
                 fprintf(output, "    sub %d, %d, %d\n", r, x, y);
                 break;
             case TAC_LT:
-                fprintf(output, "    cmpw %%cr0, %d, %d\n", x, y);
+                fprintf(output, "    cmpw %%cr0, %d, %d\n", y, x);
                 fprintf(output, "    mfcr %d\n", r);
                 fprintf(output, "    rlwinm %d, %d, 2, 31, 31\n", r, r);
                 break;

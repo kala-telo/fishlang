@@ -1,7 +1,7 @@
-(extern puts)
-(extern printf)
+(extern (defun puts [(str :cstr)] :int))
+(extern (defun printf [(fmt :cstr) ...] :int))
 
-(defun main []
+(defun main [] :int
   (if (< 2 1)
     (puts "true")
     (puts "false"))
@@ -9,5 +9,5 @@
     (puts "true")
     (puts "false"))
   (printf "%d\n" (if 0 1 2))
-  (printf "%d\n" (if 1 1 2)))
+  (printf "%d\n" (if 1 1 2)) 0)
 

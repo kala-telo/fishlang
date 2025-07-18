@@ -10,7 +10,7 @@
 #include <dirent.h>
 
 #define CC "clang "
-#define CFLAGS "-fsanitize=address -g -Wall -Wextra "
+#define CFLAGS "-fsanitize=address -O2 -D_FORTIFY_SOURCE=3 -g -Wall -Wextra "
 #define LD CC
 #define TARGET "fishc"
 #define AS "powerpc-unknown-linux-musl-as "

@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
     str.string = malloc(size * sizeof(char));
     str.length = size;
 
-    fread(str.string, 1, size, f);
+    size = fread(str.string, 1, size, f);
     fclose(f);
 
     Lexer lex = {

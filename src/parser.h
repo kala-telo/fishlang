@@ -26,6 +26,11 @@ typedef struct {
 
 typedef struct {
     String name;
+    String type;
+} VarDef;
+
+typedef struct {
+    VarDef definition;
     ASTArr value;
 } Variable;
 
@@ -35,9 +40,10 @@ struct _AST {
         struct { // AST_FUNCDEF
             String name;
             struct {
-                String *data;
+                VarDef *data;
                 size_t len, capacity;
             } args;
+            String ret;
             ASTArr body;
         } func;
         struct { // AST_CALL
@@ -55,7 +61,14 @@ struct _AST {
             } variables;
             ASTArr body;
         } var;
-        String exteral; // AST_EXTERN
+        struct {
+            String name;
+            struct {
+                VarDef *data;
+                size_t len, capacity;
+            } args;
+            String ret;
+        } external; // AST_EXTERN
     } as;
 };
 

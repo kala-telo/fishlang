@@ -1,3 +1,3 @@
-(extern printf)
+(extern (defun printf [(fmt :cstr) ...] :int))
 
-(defun main [] (printf "%d\n" (+ 34 35)))
+(defun main [] :int (printf "%d\n" (+ 34 35)) 0)

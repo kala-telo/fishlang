@@ -16,7 +16,7 @@ const char *tok_names[] = {
     [LEX_NUMBER]  = "<number>",
 };
 
-bool eat_char(Lexer *lex) {
+static bool eat_char(Lexer *lex) {
     if (lex->length < 1) {
         return false;
     }
@@ -25,11 +25,11 @@ bool eat_char(Lexer *lex) {
     return true;
 }
 
-bool valid_name(char c) {
-    return isalnum(c) || c == '+' || c == '-' || c == '>' || c == '<' || c == '=';
+static bool valid_name(char c) {
+    return isalnum(c) || c == '+' || c == '-' || c == '>' || c == '<' ||
+           c == '=' || c == ':' || c == '.';
 }
 
-// XXX: cache tokens maybe
 Token peek_token(Lexer *lex) {
     Lexer copy = *lex;
     Token token = next_token(&copy);
@@ -113,7 +113,7 @@ Token next_token(Lexer *lex) {
                 .length = 1,
             };
             if (!eat_char(lex)) goto fail;
-            while (isalnum(*lex->position)) {
+            while (valid_name(*lex->position)) {
                 word.length++;
                 if (!eat_char(lex)) goto fail;
             }

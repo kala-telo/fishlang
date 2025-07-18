@@ -27,7 +27,6 @@ typedef struct {
     TokenKind kind;
 } Token;
 
-bool eat_char(Lexer *lex);
 Token next_token(Lexer *lex);
 Token peek_token(Lexer *lex);
 
