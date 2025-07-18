@@ -1,11 +1,12 @@
-#include <stdint.h>
-#include <stdlib.h>
-#include <sys/types.h>
 #include "codegen.h"
+#include "da.h"
 #include "parser.h"
 #include "string.h"
 #include "todo.h"
-#include "da.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/types.h>
 
 void free_ctx(CodeGenCTX *ctx) {
 #define FREE(x)                                                                \
@@ -45,6 +46,58 @@ void free_ir(IR *ir) {
 #undef FREE
 }
 
+void generate_string(FILE *output, String str) {
+    bool escape = false;
+    for (int i = 0; i < str.length; i++) {
+        char c = str.string[i];
+        if (escape) {
+            switch (c) {
+            case 'n':
+                fprintf(output, "10, ");
+                escape = false;
+                break;
+            case '"':
+                fprintf(output, "34, ");
+                escape = false;
+                break;
+            case 'r':
+                fprintf(output, "13, ");
+                escape = false;
+                break;
+            case 't':
+                fprintf(output, "9, ");
+                escape = false;
+                break;
+            case 'b':
+                fprintf(output, "8, ");
+                escape = false;
+                break;
+            case 'a':
+                fprintf(output, "7, ");
+                escape = false;
+                break;
+            case '0':
+                fprintf(output, "0, ");
+                escape = false;
+                break;
+            case '\\':
+                fprintf(output, "92, ");
+                escape = false;
+                break;
+            default:
+                TODO();
+            }
+        } else {
+            if (str.string[i] == '\\') {
+                escape = true;
+            } else {
+                fprintf(output, "%d, ", c);
+            }
+        }
+    }
+    fprintf(output, "0");
+}
+
 IR codegen(ASTArr ast, CodeGenCTX *ctx) {
     for (size_t i = 0; i < ast.len; i++) {
         AST node = ast.data[i];
@@ -67,16 +120,15 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                              da_pop(ctx->args_stack)}));
                 da_append(ctx->args_stack, ctx->temp_num);
             } else if (string_eq(node.as.call.callee, S("-"))) {
-                  codegen(node.as.call.args, ctx);
+                codegen(node.as.call.args, ctx);
                 if (node.as.call.args.len != 2)
                     TODO();
                 uint16_t y = da_pop(ctx->args_stack);
                 uint16_t x = da_pop(ctx->args_stack);
-                da_append(
-                    ctx->current_function->code,
-                    ((TAC32){++ctx->temp_num, TAC_SUB, x, y}));
+                da_append(ctx->current_function->code,
+                          ((TAC32){++ctx->temp_num, TAC_SUB, x, y}));
                 da_append(ctx->args_stack, ctx->temp_num);
-          } else if (string_eq(node.as.call.callee, S("<"))) {
+            } else if (string_eq(node.as.call.callee, S("<"))) {
                 codegen(node.as.call.args, ctx);
                 if (node.as.call.args.len != 2)
                     TODO();
@@ -122,14 +174,14 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                 codegen(node.as.call.args, ctx);
                 size_t base = ctx->args_stack.len - node.as.call.args.len;
                 for (size_t i = 0; i < node.as.call.args.len; i++) {
-                    da_append(
-                        ctx->current_function->code,
-                        ((TAC32){0, TAC_CALL_PUSH,
-                                 ctx->args_stack.data[base + i], 0}));
+                    da_append(ctx->current_function->code,
+                              ((TAC32){0, TAC_CALL_PUSH,
+                                       ctx->args_stack.data[base + i], 0}));
                     ctx->args_stack.len--;
                 }
                 da_append(ctx->ir.symbols, node.as.call.callee);
-                if (hmget(ctx->global_symbols, node.as.call.callee) == HM_EMPTY) {
+                if (hmget(ctx->global_symbols, node.as.call.callee) ==
+                    HM_EMPTY) {
                     uintptr_t f = hmget(ctx->variables, node.as.call.callee);
                     assert(f != HM_EMPTY);
                     da_append(ctx->current_function->code,
@@ -220,7 +272,7 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
             break;
         }
         if (ctx->args_stack.len > args_stack_len) {
-            ctx->args_stack.len = args_stack_len+1;
+            ctx->args_stack.len = args_stack_len + 1;
         } else {
             da_append(ctx->args_stack, 0);
             assert(ctx->args_stack.len > args_stack_len);
@@ -243,7 +295,8 @@ void codegen_debug(IR ir, FILE *output) {
                 fprintf(output, "    r%d = r%d()\n", r, x);
                 break;
             case TAC_CALL_SYM:
-                fprintf(output, "    r%d = %.*s()\n", r, PS(ir.symbols.data[x]));
+                fprintf(output, "    r%d = %.*s()\n", r,
+                        PS(ir.symbols.data[x]));
                 call_count = 0;
                 break;
             case TAC_CALL_PUSH:
@@ -300,27 +353,8 @@ void codegen_debug(IR ir, FILE *output) {
         else
             fprintf(output, "%zu", var.name);
         fprintf(output, " { ");
-        bool escape = false;
-        for (int i = 0; i < var.data.length; i++) {
-            char c = var.data.string[i];
-            if (escape) {
-                switch (c) {
-                case 'n':
-                    fprintf(output, "10, ");
-                    escape = false;
-                    break;
-                default:
-                    TODO();
-                }
-            } else {
-                if (var.data.string[i] == '\\') {
-                    escape = true;
-                } else {
-                    fprintf(output, "%d, ", var.data.string[i]);
-                }
-            }
-        }
-        fprintf(output, "0 }\n");
+        generate_string(output, var.data);
+        fprintf(output, "}\n");
     }
 }
 
@@ -343,14 +377,15 @@ void codegen_powerpc(IR ir, FILE *output) {
         fprintf(output, "%.*s:\n",
                 PS(ir.symbols.data[ir.functions.data[i].name]));
         int call_count = 0;
-        int stack_frame = 16+4*ir.functions.data[i].temps_count;
-        if (stack_frame%16 != 0)
+        int stack_frame = 16 + 4 * ir.functions.data[i].temps_count;
+        if (stack_frame % 16 != 0)
             stack_frame += 16 - stack_frame % 16;
         fprintf(output, "    stwu 1,-%d(1)\n", stack_frame);
         fprintf(output, "    mflr 0\n");
-        fprintf(output, "    stw 0, %d(1)\n", stack_frame+4);
+        fprintf(output, "    stw 0, %d(1)\n", stack_frame + 4);
         for (int j = 0; j < ir.functions.data[i].temps_count; j++) {
-            fprintf(output, "    stw %d, %d(1)\n", j+gpr_base, stack_frame-j*4);
+            fprintf(output, "    stw %d, %d(1)\n", j + gpr_base,
+                    stack_frame - j * 4);
         }
         fprintf(output, "\n");
         for (size_t j = 0; j < func.len; j++) {
@@ -426,9 +461,10 @@ void codegen_powerpc(IR ir, FILE *output) {
         }
         fprintf(output, "\n");
         for (int j = 0; j < ir.functions.data[i].temps_count; j++) {
-            fprintf(output, "    lwz %d, %d(1)\n", j+gpr_base, stack_frame-j*4);
+            fprintf(output, "    lwz %d, %d(1)\n", j + gpr_base,
+                    stack_frame - j * 4);
         }
-        fprintf(output, "    lwz 0, %d(1)\n", stack_frame+4);
+        fprintf(output, "    lwz 0, %d(1)\n", stack_frame + 4);
         fprintf(output, "    mtlr 0\n");
         fprintf(output, "    addi 1,1,%d\n", stack_frame);
         fprintf(output, "    blr\n");
@@ -442,27 +478,8 @@ void codegen_powerpc(IR ir, FILE *output) {
         else
             fprintf(output, "%zu", var.name);
         fprintf(output, ": .byte ");
-        bool escape = false;
-        for (int i = 0; i < var.data.length; i++) {
-            char c = var.data.string[i];
-            if (escape) {
-                switch (c) {
-                case 'n':
-                    fprintf(output, "10, ");
-                    escape = false;
-                    break;
-                default:
-                    TODO();
-                }
-            } else {
-                if (var.data.string[i] == '\\') {
-                    escape = true;
-                } else {
-                    fprintf(output, "%d, ", var.data.string[i]);
-                }
-            }
-        }
-        fprintf(output, "0\n");
+        generate_string(output, var.data);
+        fprintf(output, "\n");
     }
     fprintf(output, ".section .note.GNU-stack,\"\",@progbits\n");
 }
