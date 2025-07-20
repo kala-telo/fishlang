@@ -26,6 +26,17 @@ typedef struct {
 
 typedef struct {
     struct {
+        struct {
+            String key;
+            uintptr_t value;
+        } *data;
+        size_t len, capacity;
+    } *table;
+    size_t length;
+} SymbolTable;
+
+typedef struct {
+    struct {
         // if string is NULL, it's index will be
         // threated as name
         String *data;
@@ -46,14 +57,14 @@ typedef struct {
 typedef struct {
     IR ir;
     StaticFunction *current_function;
-    HashMap global_symbols;
+    SymbolTable global_symbols;
     uint16_t temp_num;
     uint16_t branch_id;
     struct {
         uint32_t *data;
         size_t len, capacity;
     } args_stack;
-    HashMap variables;
+    SymbolTable variables;
 } CodeGenCTX;
 
 void free_ctx(CodeGenCTX *ctx);

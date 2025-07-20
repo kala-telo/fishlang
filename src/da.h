@@ -1,12 +1,13 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include "string.h"
 
 #ifndef DA_H
 #define DA_H
 
-#define da_append(xs, x)                                                       \
+#define da_append_empty(xs)                                                    \
     do {                                                                       \
         if ((xs).len + 1 > (xs).capacity) {                                    \
             if ((xs).capacity != 0) {                                          \
@@ -18,30 +19,18 @@
                 realloc((xs).data, sizeof(*(xs).data) * (xs).capacity);        \
             assert((xs).data != NULL);                                         \
         }                                                                      \
-        (xs).data[(xs).len++] = (x);                                           \
+        memset(&(xs).data[(xs).len++], 0, sizeof(*(xs).data));                 \
     } while (0)
 
 #define da_last(xs) ((xs).data[(xs).len - 1])
 
+#define da_append(xs, x)                                                       \
+    do {                                                                       \
+        da_append_empty(xs);                                                   \
+        da_last(xs) = (x);                                                     \
+    } while (0)
+
 #define da_pop(xs) (assert((xs).len > 0), (xs).data[--(xs).len])
-
-
-typedef struct {
-    String key;
-    uintptr_t value;
-} HMEntry;
-
-typedef struct {
-    HMEntry *data;
-    size_t len, capacity;
-} Bucket;
-
-typedef struct {
-    Bucket *table;
-    size_t length;
-} HashMap;
-
-#define HM_EMPTY (~(uintptr_t)0)
 
 static inline uint32_t fnv_1(String str) {
     uint32_t hash = 0x811c9dc5;
@@ -52,44 +41,88 @@ static inline uint32_t fnv_1(String str) {
     return hash;
 }
 
-static inline uintptr_t hmget(HashMap hm, String key) {
-    if (hm.table == NULL)
-        return HM_EMPTY;
-    Bucket bucket = hm.table[fnv_1(key) & (hm.length - 1)];
-    for (size_t i = 0; i < bucket.len; i++) {
-        if (string_eq(bucket.data[i].key, key)) {
-            return bucket.data[i].value;
-        }
-    }
-    return HM_EMPTY;
-}
+#define hmget(ret, hm, _key, _found)                                           \
+    do {                                                                       \
+        if ((hm).table == NULL) {                                              \
+            _found = 0;                                                        \
+            break;                                                             \
+        }                                                                      \
+        (_found) = 0;                                                          \
+        for (size_t i = 0;                                                     \
+             i < (hm).table[fnv_1(_key) & ((hm).length - 1)].len; i++) {       \
+            if (string_eq(                                                     \
+                    (hm).table[fnv_1(_key) & ((hm).length - 1)].data[i].key,   \
+                    (_key))) {                                                 \
+                (ret) =                                                        \
+                    (hm).table[fnv_1(_key) & ((hm).length - 1)].data[i].value; \
+                (_found) = 1;                                                  \
+                break;                                                         \
+            }                                                                  \
+        }                                                                      \
+        if (!(_found))                                                         \
+            (_found) = 0;                                                      \
+    } while (0)
 
-static inline void hmput(HashMap* restrict hm, String key, uintptr_t value) {
-    if (hm->table == NULL) {
-        // 64 is a nice constant, power of 2, should be enough
-        // for variables
-        const size_t size = 64;
-        hm->table = calloc(size, sizeof(*hm->table));
-        hm->length = size;
-    }
-    Bucket *bucket = &hm->table[fnv_1(key) & (hm->length - 1)];
-    for (size_t i = 0; i < bucket->len; i++) {
-        if (string_eq(bucket->data[i].key, key)) {
-            bucket->data[i].value = value;
-            return;
-        }
-    }
-    da_append(*bucket, ((HMEntry){key, value}));
-}
+#define hmput(hm, _key, _value)                                                \
+    do {                                                                       \
+        if ((hm).table == NULL) {                                              \
+            const size_t _hm_size = 64;                                        \
+            (hm).table = calloc(_hm_size, sizeof(*(hm).table));                \
+            (hm).length = _hm_size;                                            \
+        }                                                                      \
+        int break_out = 0;                                                     \
+        for (size_t i = 0;                                                     \
+             i < (hm).table[fnv_1(_key) & ((hm).length - 1)].len; i++) {       \
+            if (string_eq(                                                     \
+                    (hm).table[fnv_1(_key) & ((hm).length - 1)].data[i].key,   \
+                    (_key))) {                                                 \
+                (hm).table[fnv_1(_key) & ((hm).length - 1)].data[i].value =    \
+                    (_value);                                                  \
+                break_out = 1;                                                 \
+                break;                                                         \
+            }                                                                  \
+        }                                                                      \
+        if (break_out)                                                         \
+            break;                                                             \
+        da_append_empty((hm).table[fnv_1(_key) & ((hm).length - 1)]);          \
+        da_last((hm).table[fnv_1(_key) & ((hm).length - 1)]).key = (_key);     \
+        da_last((hm).table[fnv_1(_key) & ((hm).length - 1)]).value = (_value); \
+    } while (0)
 
-static inline void hmfree(HashMap* hm) {
-    for (size_t i = 0; i < hm->length; i++) {
-        if (hm->table[i].data != NULL) {
-            free(hm->table[i].data);
-            hm->table[i].data  = NULL;
-        }
-    }
-    free(hm->table);
-}
+#define hmfree(hm)                                                             \
+    do {                                                                       \
+        for (size_t i = 0; i < (hm).length; i++) {                             \
+            if ((hm).table[i].data != NULL) {                                  \
+                free((hm).table[i].data);                                      \
+                (hm).table[i].data = NULL;                                     \
+            }                                                                  \
+        }                                                                      \
+        free((hm).table);                                                      \
+        (hm).table = NULL;                                                     \
+        (hm).length = 0;                                                       \
+    } while (0);
+
+#define hmrem(hm, _key)                                                        \
+    do {                                                                       \
+        if ((hm).table == NULL) {                                              \
+            const size_t _hm_size = 64;                                        \
+            (hm).table = calloc(_hm_size, sizeof(*(hm).table));                \
+            (hm).length = _hm_size;                                            \
+        }                                                                      \
+        for (size_t i = 0;                                                     \
+             i < (hm).table[fnv_1(_key) & ((hm).length - 1)].len; i++) {       \
+            if (string_eq(                                                     \
+                    (hm).table[fnv_1(_key) & ((hm).length - 1)].data[i].key,   \
+                    (_key))) {                                                 \
+                memset(                                                        \
+                    &(hm).table[fnv_1(_key) & ((hm).length - 1)].data[i].key,  \
+                    0,                                                         \
+                    sizeof((hm).table[fnv_1(_key) & ((hm).length - 1)]         \
+                               .data[i]                                        \
+                               .key));                                         \
+                break;                                                         \
+            }                                                                  \
+        }                                                                      \
+    } while (0)
 
 #endif // DA_H

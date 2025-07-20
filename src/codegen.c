@@ -1,12 +1,14 @@
+#include <sys/types.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdio.h>
+
 #include "codegen.h"
-#include "da.h"
 #include "parser.h"
 #include "string.h"
 #include "todo.h"
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>
+#include "da.h"
 
 void free_ctx(CodeGenCTX *ctx) {
 #define FREE(x)                                                                \
@@ -105,7 +107,7 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
         switch (node.kind) {
         case AST_EXTERN:
             da_append(ctx->ir.symbols, node.as.external.name);
-            hmput(&ctx->global_symbols, node.as.external.name, ctx->ir.symbols.len-1);
+            hmput(ctx->global_symbols, node.as.external.name, ctx->ir.symbols.len-1);
             // TODO
             break;
         case AST_CALL:
@@ -180,10 +182,12 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
                     ctx->args_stack.len--;
                 }
                 da_append(ctx->ir.symbols, node.as.call.callee);
-                if (hmget(ctx->global_symbols, node.as.call.callee) ==
-                    HM_EMPTY) {
-                    uintptr_t f = hmget(ctx->variables, node.as.call.callee);
-                    assert(f != HM_EMPTY);
+                bool found;
+                uintptr_t f = 0;
+                hmget(f, ctx->global_symbols, node.as.call.callee, found);
+                if (!found) {
+                    hmget(f, ctx->variables, node.as.call.callee, found);
+                    assert(found);
                     da_append(ctx->current_function->code,
                               ((TAC32){++ctx->temp_num, TAC_CALL_REG,
                                        (uint32_t)f, 0}));
@@ -199,7 +203,7 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
             // assert(ctx->args_stack.len == 0);
             StaticFunction *prev_func = ctx->current_function;
             da_append(ctx->ir.symbols, node.as.func.name);
-            hmput(&ctx->global_symbols, node.as.func.name,
+            hmput(ctx->global_symbols, node.as.func.name,
                   ctx->ir.symbols.len - 1);
             da_append(ctx->ir.functions,
                       ((StaticFunction){ctx->ir.symbols.len - 1, {0}, 0}));
@@ -207,12 +211,12 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
             for (size_t j = 0; j < node.as.func.args.len; j++) {
                 da_append(ctx->current_function->code,
                           ((TAC32){++ctx->temp_num, TAC_LOAD_ARG, j, 0}));
-                hmput(&ctx->variables, node.as.func.args.data[j].name,
+                hmput(ctx->variables, node.as.func.args.data[j].name,
                       ctx->temp_num);
             }
             codegen(node.as.func.body, ctx);
             for (size_t j = 0; j < node.as.func.args.len; j++) {
-                hmput(&ctx->variables, node.as.func.args.data[j].name, HM_EMPTY);
+                hmrem(ctx->variables, node.as.func.args.data[j].name);
             }
             da_append(ctx->current_function->code,
                       ((TAC32){0, TAC_RETURN_VAL, da_pop(ctx->args_stack), 0}));
@@ -223,15 +227,15 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
             assert(ctx->current_function != NULL);
             for (size_t j = 0; j < node.as.var.variables.len; j++) {
                 codegen(node.as.var.variables.data[j].value, ctx);
-                hmput(&ctx->variables,
+                hmput(ctx->variables,
                       node.as.var.variables.data[j].definition.name,
                       da_pop(ctx->args_stack));
             }
             codegen(node.as.var.body, ctx);
             for (size_t j = 0; j < node.as.var.variables.len; j++) {
                 codegen(node.as.var.variables.data[j].value, ctx);
-                hmput(&ctx->variables,
-                      node.as.var.variables.data[j].definition.name, HM_EMPTY);
+                hmrem(ctx->variables,
+                      node.as.var.variables.data[j].definition.name);
             }
             da_append(ctx->current_function->code,
                       ((TAC32){0, TAC_RETURN_VAL, da_pop(ctx->args_stack), 0}));
@@ -242,13 +246,16 @@ IR codegen(ASTArr ast, CodeGenCTX *ctx) {
             break;
         case AST_NAME: {
             assert(ctx->current_function != NULL);
-            uintptr_t var = hmget(ctx->variables, node.as.name);
-            if (var != HM_EMPTY) {
+            uintptr_t var = 0;
+            bool found;
+            hmget(var, ctx->variables, node.as.name, found);
+            if (found) {
                 da_append(ctx->args_stack, var);
                 break;
             }
-            uintptr_t symbol = hmget(ctx->global_symbols, node.as.name);
-            assert(symbol != HM_EMPTY);
+            uintptr_t symbol = 0;
+            hmget(symbol, ctx->global_symbols, node.as.name, found);
+            assert(found);
             da_append(ctx->current_function->code,
                       ((TAC32){++ctx->temp_num, TAC_LOAD_SYM, symbol, 0}));
             da_append(ctx->args_stack, ctx->temp_num);
