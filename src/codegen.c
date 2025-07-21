@@ -27,7 +27,6 @@ void free_ctx(CodeGenCTX *ctx) {
         FREE(ctx->global_symbols.table[i].data);
     }
     FREE(ctx->global_symbols.table);
-    FREE(ctx);
 #undef FREE
 }
 
