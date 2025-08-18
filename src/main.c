@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "codegen.h"
 #include "da.h"
@@ -13,28 +14,28 @@
 #include "todo.h"
 
 typedef struct {
-    String function;
-    String name;
-    uint16_t scope;
+    char name[120];
+    size_t id;
 } SymbolID;
 
 typedef struct _Type Type;
 
 struct _Type {
     enum {
+        TYPE_VOID,
         TYPE_FUNCTION,
         TYPE_CSTR,
-        TYPE_INT,
-        TYPE_ANY,
-        TYPE_VOID,
+        TYPE_I32,
+        TYPE_ANY, // changing it to variadic or so can be a good idea
+        TYPE_BOOL,
     } type;
     union {
-        struct { // TYPE_FUNCTION
-            struct {
+        struct {
+            struct { // TYPE_FUNCTION
                 Type* data;
                 size_t len, capacity;
             } args;
-            Type *return_value;
+            Type *ret;
         } func;
     } as;
 };
@@ -42,123 +43,107 @@ struct _Type {
 typedef struct {
     struct {
         struct {
-            String key;
+            SymbolID key;
             Type value;
-        } *data;
-        size_t len, capacity;
-    } *table;
+        }* data;
+        size_t len;
+        size_t capacity;
+    }* table;
     size_t length;
-    struct {
-        SymbolID *data;
-        size_t len, capacity;
-    } symbols;
-} TypesTable;
+} TypeTable;
 
-#define typeid_to_string(typeid) ((String){(void*)(typeid), sizeof(SymbolID)})
-
-typedef struct {
-    String current_function;
-    uint16_t current_scope;
-    TypesTable tt;
-} TypeCollectCtx;
-
-void type_free(Type t) {
-    switch (t.type) {
-    case TYPE_VOID:
-    case TYPE_ANY:
-    case TYPE_CSTR:
-    case TYPE_INT:
-        break;
-    case TYPE_FUNCTION:
-        for (size_t i = 0; i < t.as.func.args.len; i++) {
-            type_free(t.as.func.args.data[i]);
-        }
-        free(t.as.func.args.data);
-        t.as.func.args.data = NULL;
-        type_free(*t.as.func.return_value);
-        free(t.as.func.return_value);
-        t.as.func.return_value = NULL;
-        break;
+void free_type(Type t) {
+    // printf("%d\n", t.type);
+    if (t.type != TYPE_FUNCTION)
+        return;
+    free(t.as.func.ret);
+    for (size_t i = 0; i < t.as.func.args.len; i++) {
+        free_type(t.as.func.args.data[i]);
     }
+    free(t.as.func.args.data);
 }
 
-void typestable_free(TypesTable *tt) {
+void free_typetable(TypeTable *tt) {
     for (size_t i = 0; i < tt->length; i++) {
         for (size_t j = 0; j < tt->table[i].len; j++) {
-            type_free(tt->table[i].data[j].value);
+            Type t = tt->table[i].data[j].value;
+            free_type(t);
         }
         free(tt->table[i].data);
     }
     free(tt->table);
     tt->table = NULL;
-    tt->table = 0;
-    free(tt->symbols.data);
-    tt->symbols.data = NULL;
+    tt->length = 0;
 }
 
-Type extract_type(String type) {
-    if (string_eq(type, S(":int"))) {
-        return (Type){TYPE_INT, {}};
-    } else if (string_eq(type, S(":cstr"))) {
-        return (Type){TYPE_CSTR, {}};
-    } else  if (string_eq(type, S("..."))) {
-        return (Type){TYPE_ANY, {}};
-    } else  if (string_eq(type, S(":todo"))) {
-        return (Type){TYPE_ANY, {}};
-    } else if (string_eq(type, S(":void"))) {
-        return (Type){TYPE_VOID, {}};
-    }
-    fprintf(stderr, "%.*s\n", PS(type));
-    TODO();
+void insert_type(Arena *arena, TypeTable *tt, size_t id, String name, Type type) {
+    SymbolID tid = { 0 };
+    snprintf(tid.name, sizeof(tid.name), "%.*s", PS(name));
+    tid.id = id;
+    hm_put(arena, *tt, tid, type);
 }
 
-TypesTable extract_types(ASTArr *ast, TypeCollectCtx *ctx) {
-    for (size_t i = 0; i < ast->len; i++) {
-        AST *node = &ast->data[i];
-        switch (node->kind) {
-        case AST_EXTERN: {
-            da_append(ctx->tt.symbols,
-                      ((SymbolID){ctx->current_function, node->as.external.name,
-                                  ctx->current_scope}));
-            String type_id = typeid_to_string(&da_last(ctx->tt.symbols));
-            Type type = (Type){TYPE_FUNCTION, {0}};
-            for (size_t j = 0; j < node->as.external.args.len; j++) {
-                Type t = extract_type(node->as.external.args.data[j].type);
-                da_append(type.as.func.args, t);
-            }
-            type.as.func.return_value =
-                calloc(1, sizeof(*type.as.func.return_value));
-            *type.as.func.return_value = extract_type(node->as.external.ret);
-            hmput(ctx->tt, type_id, type);
-        } break;
-        case AST_FUNCDEF: {
-            da_append(ctx->tt.symbols,
-                      ((SymbolID){ctx->current_function, node->as.func.name,
-                                  ctx->current_scope}));
-            String type_id = typeid_to_string(&da_last(ctx->tt.symbols));
-            Type type = (Type){TYPE_FUNCTION, {0}};
-            for (size_t j = 0; j < node->as.func.args.len; j++) {
-                Type t = extract_type(node->as.func.args.data[j].type);
-                da_append(type.as.func.args, t);
-            }
-            type.as.func.return_value =
-                calloc(1, sizeof(*type.as.func.return_value));
-            *type.as.func.return_value = extract_type(node->as.func.ret);
-            hmput(ctx->tt, type_id, type);
-        } break;
-        case AST_VARDEF:
+Type extract_types(Arena *arena, ASTArr ast, TypeTable *tt) {
+    Type r = {0};
+    for (size_t i = 0; i < ast.len; i++) {
+        AST node = ast.data[i];
+        switch (node.kind) {
+        case AST_BOOL:
             TODO();
             break;
         case AST_CALL:
+            TODO();
+            break;
+        case AST_DEF: {
+            Type t = extract_types(arena, node.as.def.body, tt);
+            insert_type(arena, tt, node.id, node.as.def.name, t);
+            extract_types(arena, node.as.def.body, tt);
+        } break;
+        case AST_EXTERN: {
+            Type t = extract_types(arena, node.as.external.body, tt);
+            insert_type(arena, tt, node.id, node.as.external.name, t);
+        } break;
+        case AST_FUNC: {
+            r.type = TYPE_FUNCTION;
+            Type ret = extract_types(arena, node.as.func.ret, tt);
+            r.as.func.ret = arena_alloc(arena, sizeof(ret));
+            memcpy(r.as.func.ret, &ret, sizeof(ret));
+            for (size_t j = 0; j < node.as.func.args.len; j++) {
+                Type type = extract_types(arena, node.as.func.args.data[j].type, tt);
+                String name = node.as.func.args.data[j].name;
+                da_append(arena, r.as.func.args, type);
+                insert_type(arena, tt, node.id, name, type);
+            }
+        } break;
         case AST_LIST:
-        case AST_NAME:
+            TODO();
+            break;
         case AST_NUMBER:
+            TODO();
+            break;
         case AST_STRING:
             TODO();
             break;
+        case AST_VARDEF:
+            TODO();
+            break;
+        case AST_NAME:
+            if (string_eq(node.as.name, S("i32"))) {
+                r = (Type){TYPE_I32, {0}};
+            } else if (string_eq(node.as.name, S("cstr"))) {
+                r = (Type){TYPE_CSTR, {0}};
+            } else if (string_eq(node.as.name, S("..."))) {
+                r = (Type){TYPE_ANY, {0}};
+            } else if (string_eq(node.as.name, S("void"))) {
+                r = (Type){TYPE_VOID, {0}};
+            } else {
+                fprintf(stderr, "%.*s\n", PS(node.as.name));
+                TODO();
+            }
+            break;
         }
     }
-    return ctx->tt;
+    return r;
 }
 
 int main(int argc, char *argv[]) {
@@ -188,30 +173,29 @@ int main(int argc, char *argv[]) {
         // lexer to not read into unallocated memory
         .length = size - 1,
         .position = str.string,
+        .loc = {0, 0, argv[1]},
     };
 
     ASTArr body = {0};
-    while (peek_token(&lex).kind != LEX_END)
-        parse(&lex, &body);
+    Arena arena = {0};
+    {
+        size_t node_id = 0;
+        while (peek_token(&lex).kind != LEX_END)
+            parse(&arena, &lex, &body, &node_id);
+    }
 
-    TypeCollectCtx tc_ctx = { 0 }; 
-    TypesTable tt = extract_types(&body, &tc_ctx);
-    typestable_free(&tt);
+    TypeTable tt = {0};
+    extract_types(&arena, body, &tt);
 
     CodeGenCTX cg_ctx = { 0 };
-    IR ir = codegen(body, &cg_ctx);
-    free_ctx(&cg_ctx);
-
-    for (size_t i = 0; i < ir.functions.len; i++)
+    IR ir = codegen(&arena, body, &cg_ctx);
+    for (size_t i = 0; i < ir.functions.len; i++) {
         ir.functions.data[i].temps_count =
             fold_temporaries(ir.functions.data[i].code);
+    }
     codegen_powerpc(ir, stdout);
     // codegen_debug(ir, stdout);
 
-    // it's not like you really need to free it
-    // but i wanted to make ASAN and valgrind happy
-    free_ir(&ir);
-    free_ast(&body);
-    free(body.data);
+    arena_destroy(&arena);
     free(str.string);
 }

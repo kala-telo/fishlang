@@ -11,16 +11,17 @@ static bool ranges_intersect(int f1, int t1, int f2, int t2) {
 }
 
 uint16_t fold_temporaries(TAC32Arr tac) {
+    Arena scratch = { 0 };
     size_t temps_count = 0;
     for (size_t i = 0; i < tac.len; i++) {
         if (tac.data[i].result >= temps_count)
             temps_count = tac.data[i].result + 1;
     }
 
-    int *first = malloc(temps_count * sizeof(int));
+    int *first = arena_alloc(&scratch, temps_count * sizeof(int));
     memset(first, 0xff, temps_count * sizeof(int));
 
-    int *last = malloc(temps_count * sizeof(int));
+    int *last = arena_alloc(&scratch, temps_count * sizeof(int));
     memset(last, 0xff, temps_count * sizeof(int));
 
     for (size_t i = 0; i < tac.len; i++) {
@@ -62,27 +63,22 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     struct {
         int *data;
         size_t len, capacity;
-    } *graph;
-    graph = calloc(temps_count, sizeof(*graph));
+    } *graph = arena_alloc(&scratch, temps_count*sizeof(*graph));
+    memset(graph, 0, temps_count*sizeof(*graph));
 
     for (size_t i = 1; i < temps_count; i++) {
         for (size_t j = 1; j < temps_count; j++) {
             if (ranges_intersect(first[i], last[i], first[j], last[j]) &&
                 i != j)
-                da_append(graph[i], j);
+                da_append(&scratch, graph[i], j);
         }
     }
-    free(first);
-    first = NULL;
-    free(last);
-    last = NULL;
 
-    uint16_t *map;
-    map = malloc(temps_count*sizeof(*map));
+    uint16_t *map = arena_alloc(&scratch, temps_count*sizeof(*map));
     memset(map, 0xff, temps_count*sizeof(*map));
 
     uint16_t new_temps_count = 0;
-    bool *used_registers = malloc(temps_count*sizeof(bool));
+    bool *used_registers = arena_alloc(&scratch, temps_count*sizeof(bool));
     for (size_t i = 1; i < temps_count; i++) {
         memset(used_registers, 0, temps_count*sizeof(bool));
         for (size_t j = 0; j < graph[i].len; j++) {
@@ -104,13 +100,6 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     success:
         continue;
     }
-    free(used_registers);
-
-    for (size_t i = 0; i < temps_count; i++) {
-        free(graph[i].data);
-        graph[i].data = NULL;
-    }
-    free(graph);
 
     #define REMAP(x) (x) = (x) ? (uint32_t)map[(x)] : 0;
     for (size_t i = 0; i < tac.len; i++) {
@@ -141,6 +130,6 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         }
     }
     #undef REMAP
-    free(map);
+    arena_destroy(&scratch);
     return new_temps_count;
 }

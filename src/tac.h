@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "arena.h"
+
 #ifndef TAC_H
 #define TAC_H
 

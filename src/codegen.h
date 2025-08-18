@@ -68,7 +68,7 @@ typedef struct {
 } CodeGenCTX;
 
 void free_ctx(CodeGenCTX *ctx);
-IR codegen(ASTArr ast, CodeGenCTX *ctx);
+IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx);
 void codegen_powerpc(IR ir, FILE *output);
 void codegen_debug(IR ir, FILE *output);
 void free_ir(IR *ir);

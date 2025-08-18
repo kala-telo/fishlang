@@ -1,2 +1,2 @@
-(extern (defun puts [(str :cstr)] :int))
-(defun main [] :int (puts "hellope"))
+(extern puts (fn [cstr] i32))
+(def main (fn [] i32 (puts "hellope")))

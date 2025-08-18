@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "lexer.h"
+#include "string.h"
 #include "todo.h"
 
 const char *tok_names[] = {
@@ -20,7 +21,12 @@ static bool eat_char(Lexer *lex) {
     if (lex->length < 1) {
         return false;
     }
-    lex->position++;
+    if (*lex->position++ == '\n') {
+        lex->loc.line++;
+        lex->loc.col = 0;
+    } else {
+        lex->loc.col++;
+    }
     lex->length--;
     return true;
 }
@@ -42,6 +48,7 @@ Token next_token(Lexer *lex) {
             return (Token){
                 .kind = LEX_END,
                 .str = (String){lex->position, 0},
+                .loc = lex->loc
             };
         }
     }
@@ -51,6 +58,7 @@ Token next_token(Lexer *lex) {
         return (Token){
             .kind = LEX_OPAREN,
             .str = (String){lex->position-1, 1},
+            .loc = lex->loc
         };
         break;
     case ')':
@@ -58,6 +66,7 @@ Token next_token(Lexer *lex) {
         return (Token){
             .kind = LEX_CPAREN,
             .str = (String){lex->position-1, 1},
+            .loc = lex->loc
         };
         break;
     case '[':
@@ -65,6 +74,7 @@ Token next_token(Lexer *lex) {
         return (Token){
             .kind = LEX_OBRAKET,
             .str = (String){lex->position-1, 1},
+            .loc = lex->loc
         };
         break;
     case ']':
@@ -72,6 +82,7 @@ Token next_token(Lexer *lex) {
         return (Token){
             .kind = LEX_CBRAKET,
             .str = (String){lex->position-1, 1},
+            .loc = lex->loc
         };
         break;
     case '"': {
@@ -89,6 +100,7 @@ Token next_token(Lexer *lex) {
         return (Token) {
             .kind = LEX_STRING,
             .str = str,
+            .loc = lex->loc
         };
     }
     default:
@@ -106,6 +118,7 @@ Token next_token(Lexer *lex) {
             return (Token){
                 .kind = LEX_NUMBER,
                 .str = word,
+                .loc = lex->loc
             };
         } else if (valid_name(*lex->position)) {
             String word = {
@@ -117,15 +130,23 @@ Token next_token(Lexer *lex) {
                 word.length++;
                 if (!eat_char(lex)) goto fail;
             }
+            if (string_eq(word, S("true")) || string_eq(word, S("false"))) {
+                return (Token){
+                    .kind = LEX_BOOL,
+                    .str = word,
+                    .loc = lex->loc
+                };
+            }
             return (Token){
                 .kind = LEX_NAME,
                 .str = word,
+                .loc = lex->loc
             };
         }
     }
 
-    fprintf(stderr, "Unexpected value '%c' (%d)\n", *lex->position,
-            *lex->position);
+    fprintf(stderr, "%s:%d:%d Unexpected value '%c' (%d)\n", lex->loc.file,
+            lex->loc.line + 1, lex->loc.col, *lex->position, *lex->position);
     TODO();
 
     fail: {

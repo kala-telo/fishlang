@@ -1,5 +1,5 @@
-(extern (defun printf [(fmt :cstr) ...] :int))
+(extern printf (fn [cstr ...] i32))
 
-(defun main [] :int
-  (let [(x :int 34) (y :int 35)]
-    (printf "%d\n" (+ x y))) 0)
+(def main (fn [] i32
+  (let [(x cstr 34) (y i32 35)]
+    (printf "%d\n" (+ x y))) 0))

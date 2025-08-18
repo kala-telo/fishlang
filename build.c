@@ -9,8 +9,17 @@
 #include <stdint.h>
 #include <dirent.h>
 
+#ifndef DEBUG
+#define DEBUG 1
+#endif
+
 #define CC "clang "
+#if DEBUG
 #define CFLAGS "-pedantic -std=c99 -fsanitize=address -O2 -D_FORTIFY_SOURCE=3 -g -Wall -Wextra "
+#else
+#define CFLAGS "-static -pedantic -std=c99 -O3 -Wall -Wextra "
+#endif
+
 #define LD CC
 #define TARGET "fishc"
 #define AS "powerpc-unknown-linux-musl-as "
@@ -21,10 +30,10 @@
 
 #define ARRLEN(xs) (sizeof(xs) / sizeof(*(xs)))
 
-#define da_append_str(xs, x)                                                   \
-    for (int da_append_str_i = 0; da_append_str_i < strlen(x);                 \
+#define da_append_str(arena, xs, x)                                            \
+    for (int da_append_str_i = 0; da_append_str_i < strlen((x));               \
          da_append_str_i++) {                                                  \
-        da_append(xs, x[da_append_str_i]);                                     \
+        da_append((arena), (xs), (x)[da_append_str_i]);                        \
     }
 
 static bool endswith(String str, String suf) {
@@ -78,18 +87,19 @@ bool link(String *files, size_t files_count) {
         char *data;
         size_t len, capacity;
     } link_command = {0};
-    da_append_str(link_command, LD);
-    da_append_str(link_command, CFLAGS);
+    Arena scratch = {0};
+    da_append_str(&scratch, link_command, LD);
+    da_append_str(&scratch, link_command, CFLAGS);
     for (size_t i = 0; i < files_count; i++) {
         char *o_file = c2o(files[i]);
-        da_append_str(link_command, o_file);
-        da_append(link_command, ' ');
+        da_append_str(&scratch, link_command, o_file);
+        da_append(&scratch, link_command, ' ');
     }
-    da_append_str(link_command, "-o " TARGET);
-    da_append(link_command, '\0');
+    da_append_str(&scratch, link_command, "-o " TARGET);
+    da_append(&scratch, link_command, '\0');
     printf("$ %s\n", link_command.data);
     bool result = system(link_command.data) != 0;
-    free(link_command.data);
+    arena_destroy(&scratch);
     return result;
 }
 

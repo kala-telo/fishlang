@@ -1,11 +1,11 @@
-(extern (defun printf [(fmt :cstr) ...] :int))
+(extern printf (fn [(fmt cstr) ...] i32))
 
-(defun fib [(n :int)] :int
+(def fib (fn [(n i32)] i32
   (if (< n 2)
     n
     (+ (fib (- n 1))
-       (fib (- n 2)))))
+       (fib (- n 2))))))
 
-(defun main [] :int
-  (printf "%d\n" (fib 10)) 0)
+(def main (fn [] i32
+  (printf "%d\n" (fib 10)) 0))
 

@@ -1,19 +1,19 @@
-(extern (defun puts   [(str :cstr)] :int))
-(extern (defun printf [(fmt :cstr) ...] :int))
+(extern puts   (fn [(str cstr)]     i32))
+(extern printf (fn [(fmt cstr) ...] i32))
 
-(defun twice [(f :todo) (x :int)] :int
-  (f (f x)))
+(def twice (fn [(f (fn [i32] i32)) (x i32)] i32
+  (f (f x))))
 
-(defun inc [(n :int)] :int
-  (+ n 1))
+(def inc (fn [(n i32)] i32
+  (+ n 1)))
 
-(defun foo [] :void
-  (puts "foo") 0)
+(def foo (fn [] void
+  (puts "foo")))
 
-(defun bar [(x :int) (y :int)] :int
-  (+ x y))
+(def bar (fn [(x i32) (y i32)] i32
+  (+ x y)))
 
-(defun main [] :int
+(def main (fn [] i32
   (foo)
   (printf "%d\n" (+ (bar 1 2) (bar 3 4)))
-  (printf "%d\n" (twice inc 5)) 0)
+  (printf "%d\n" (twice inc 5)) 0))
