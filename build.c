@@ -177,6 +177,7 @@ int main(int argc, char *argv[]) {
         S("src/lexer.c"),
         S("src/main.c"),
         S("src/tac.c"),
+        S("src/typing.c"),
     };
 
     for (size_t i = 0; i < ARRLEN(files); i++) {

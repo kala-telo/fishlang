@@ -69,6 +69,7 @@ struct _AST {
     } as;
     Location loc;
     size_t id;
+    AST *parent;
 };
 
 struct _VarDef {
@@ -81,7 +82,7 @@ struct _Variable {
     ASTArr value;
 };
 
-void parse(Arena *arena, Lexer *lex, ASTArr *parent, size_t *node_id);
+void parse(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id);
 void free_ast(ASTArr *ast);
 void dump_ast(ASTArr ast, int indent);
 
