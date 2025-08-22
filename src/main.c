@@ -11,34 +11,45 @@
 #include "tac.h"
 #include "typing.h"
 
-int main(int argc, char *argv[]) {
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s <file.fsh>\n", argv[0]);
-        return 1;
-    }
-    FILE *f = fopen(argv[1], "r");
-    if (f == NULL) {
-        fprintf(stderr, "Couldn't open file %s\n", argv[1]);
-        return 1;
-    }
+typedef enum {
+    TARGET_PPC,
+    TARGET_DEBUG,
+} Target;
+const char *const target_names[] = {
+    [TARGET_PPC] = "ppc",
+    [TARGET_DEBUG] = "debug",
+};
+#define ARRLEN(xs) (sizeof(xs)/sizeof(*(xs)))
 
-    fseek(f, 0, SEEK_END);
-    int size = ftell(f);
-    fseek(f, 0, SEEK_SET);
+char *next_arg(int* argc, char ***argv, char* error) {
+    if (*argc == 0) {
+        if (error != NULL) {
+            fprintf(stderr, "%s\n", error);
+        }
+        exit(1);
+    }
+    return *argv[(*argc)--]++;
+}
+
+void compile(Target target, const char *const file_name, FILE *input,
+             FILE *out) {
+    fseek(input, 0, SEEK_END);
+    int size = ftell(input);
+    fseek(input, 0, SEEK_SET);
 
     String str = {0};
     str.string = malloc(size * sizeof(char));
     str.length = size;
 
-    size = fread(str.string, 1, size, f);
-    fclose(f);
+    size = fread(str.string, 1, size, input);
+    fclose(input);
 
     Lexer lex = {
         // -1 for \0, though it still must be in memory for
         // lexer to not read into unallocated memory
         .length = size - 1,
         .position = str.string,
-        .loc = {0, 0, argv[1]},
+        .loc = {0, 0, file_name},
     };
 
     ASTArr body = {0};
@@ -60,9 +71,76 @@ int main(int argc, char *argv[]) {
         ir.functions.data[i].temps_count =
             fold_temporaries(ir.functions.data[i].code);
     }
-    codegen_powerpc(ir, stdout);
-    // codegen_debug(ir, stdout);
+    switch (target) {
+    case TARGET_DEBUG:
+        codegen_debug(ir, out);
+        break;
+    case TARGET_PPC:
+        codegen_powerpc(ir, out);
+        break;
+    }
 
     arena_destroy(&arena);
     free(str.string);
+}
+
+void usage(FILE *out, const char *const program) {
+    fprintf(out, "Usage: %s [-h] [-t <target>] [-o <output file>] <input file>\n\n", program);
+    fprintf(out, "\t-t\tcompilation target\n");
+    fprintf(out, "\t\t\tppc\t32 bit powerpc GAS\n");
+    fprintf(out, "\t\t\tdebug\thuman-readable pseudocode\n");
+    fprintf(out, "\t-h\tShows this help message\n");
+    fprintf(out, "\t-o\tSpecifies the output file, the default one stdout\n");
+}
+
+int main(int argc, char *argv[]) {
+    char *program = next_arg(&argc, &argv, NULL);
+    Target target = TARGET_PPC;
+    FILE* output = stdout;
+    struct {
+        char** data;
+        size_t len, capacity;
+    } inputs = {0};
+    Arena arena = {0};
+    while (argc) {
+        char *arg = next_arg(&argc, &argv, NULL);
+        if (strcmp(arg, "-t") == 0) {
+            char *target_str = next_arg(&argc, &argv, "Argument `-t` expects target name next, see -h for list");
+            for (size_t i = 0; i < ARRLEN(target_names); i++) {
+                if (strcmp(target_str, target_names[i]) == 0)
+                    target = i;
+            }
+        } else if (strcmp(arg, "-o") == 0) {
+            if (output != stdout) {
+                // TODO: rephrase this
+                fprintf(stderr, "Attempting to set output the second time is weird\n");
+                return 1;
+            }
+            char *filename = next_arg(&argc, &argv, "Argument `-o` expects filename next, see -h");
+            output = fopen(filename, "w");
+            if (!output) {
+                fprintf(stderr, "Couldn't open file `%s`\n", filename);
+                return 1;
+            }
+        } else if (strcmp(arg, "-h") == 0 || strcmp(arg, "--help") == 0) {
+            usage(stdout, program);
+            return 0;
+        } else {
+            da_append(&arena, inputs, arg);
+        }
+    }
+    if (inputs.len == 0) {
+        fprintf(stderr, "No input files were provided.\n");
+    }
+    for (size_t i = 0; i < inputs.len; i++) {
+        char *filename = inputs.data[i];
+        FILE* input = fopen(filename, "r");
+        if (!output) {
+            fprintf(stderr, "Couldn't open input file `%s`\n", filename);
+            return 1;
+        }
+        compile(target, filename, input, output);
+    }
+    arena_destroy(&arena);
+    if (output != stdout) fclose(output);
 }

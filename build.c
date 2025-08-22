@@ -129,7 +129,7 @@ bool build_examples() {
         char obj_path[1000];
         snprintf(obj_path, sizeof(obj_path), ".build/examples/%.*s.o", len - 4,
                  de->d_name);
-        snprintf(buffer, sizeof(buffer), "./" TARGET " examples/%s > %s",
+        snprintf(buffer, sizeof(buffer), "./" TARGET " examples/%s -o %s",
                  de->d_name, asm_path);
         printf("$ %s\n", buffer);
         if (system(buffer) != 0) {
