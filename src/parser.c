@@ -3,9 +3,7 @@
 #include "lexer.h"
 #include "string.h"
 #include "todo.h"
-#include <inttypes.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 Token expect(Token token, TokenKind expected) {
     if (token.kind != expected) {
@@ -152,52 +150,4 @@ void parse(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) 
         TODO();
         break;
     }
-}
-
-void free_ast(ASTArr *ast) {
-    for (size_t i = 0; i < ast->len; i++) {
-        switch (ast->data[i].kind) {
-        case AST_CALL:
-            free_ast(&ast->data[i].as.call.args);
-            break;
-        case AST_FUNC:
-            for (size_t j = 0; j < ast->data[i].as.func.args.len; j++) {
-                free_ast(&ast->data[i].as.func.args.data[j].type);
-            }
-            free(ast->data[i].as.func.args.data);
-            free_ast(&ast->data[i].as.func.body);
-            free_ast(&ast->data[i].as.func.ret);
-            break;
-        case AST_LIST:
-            free_ast(&ast->data[i].as.list);
-            break;
-        case AST_VARDEF:
-            for (size_t j = 0; j < ast->data[i].as.var.variables.len; j++) {
-                free_ast(&ast->data[i].as.var.variables.data[j].value);
-                free_ast(&ast->data[i].as.var.variables.data[j].definition.type);
-            }
-            for (size_t j = 0; j <  ast->data[i].as.var.variables.len; j++) {
-                free_ast(&ast->data[i].as.var.variables.data[i].value);
-            }
-            free(ast->data[i].as.var.variables.data);
-            ast->data[i].as.var.variables.data = NULL;
-            free_ast(&ast->data[i].as.var.body);
-            break;
-        case AST_EXTERN:
-            free_ast(&ast->data[i].as.external.body);
-            break;
-        case AST_DEF:
-            free_ast(&ast->data[i].as.def.body);
-            break;
-        case AST_NAME:
-        case AST_NUMBER:
-        case AST_STRING:
-        case AST_BOOL:
-            break;
-        }
-    }
-    free(ast->data);
-    ast->data = NULL;
-    ast->capacity = 0;
-    ast->len = 0;
 }

@@ -11,43 +11,6 @@
 #include "string.h"
 #include "todo.h"
 
-void free_ctx(CodeGenCTX *ctx) {
-#define FREE(x)                                                                \
-    do {                                                                       \
-        if ((x) != NULL) {                                                     \
-            free(x);                                                           \
-            (x) = NULL;                                                        \
-        }                                                                      \
-    } while (0)
-    FREE(ctx->args_stack.data);
-    for (size_t i = 0; i < ctx->variables.length; i++) {
-        FREE(ctx->variables.table[i].data);
-    }
-    FREE(ctx->variables.table);
-    for (size_t i = 0; i < ctx->global_symbols.length; i++) {
-        FREE(ctx->global_symbols.table[i].data);
-    }
-    FREE(ctx->global_symbols.table);
-#undef FREE
-}
-
-void free_ir(IR *ir) {
-#define FREE(x)                                                                \
-    do {                                                                       \
-        if ((x) != NULL) {                                                     \
-            free(x);                                                           \
-            (x) = NULL;                                                        \
-        }                                                                      \
-    } while (0)
-    for (size_t i = 0; i < ir->functions.len; i++) {
-        FREE(ir->functions.data[i].code.data);
-    }
-    FREE(ir->data.data);
-    FREE(ir->symbols.data);
-    FREE(ir->functions.data);
-#undef FREE
-}
-
 void generate_string(FILE *output, String str) {
     bool escape = false;
     for (int i = 0; i < str.length; i++) {
@@ -319,6 +282,17 @@ void codegen_debug(IR ir, FILE *output) {
             case TAC_CALL_PUSH:
                 fprintf(output, "    c%d = r%d\n", (call_count++), x);
                 break;
+            case TAC_CALL_PUSH_INT:
+                fprintf(output, "    c%d = %d\n", (call_count++), x);
+                break;
+            case TAC_CALL_PUSH_SYM:
+                if (ir.symbols.data[x].string != NULL) {
+                    fprintf(output, "    c%d = [%.*s]\n", r,
+                            PS(ir.symbols.data[x]));
+                } else {
+                    fprintf(output, "    c%d = [data_%d]\n", (call_count++), x);
+                }
+                break;
             case TAC_LOAD_INT:
                 fprintf(output, "    r%d = %d\n", r, x);
                 break;
@@ -339,8 +313,14 @@ void codegen_debug(IR ir, FILE *output) {
             case TAC_ADD:
                 fprintf(output, "    r%d = r%d + r%d\n", r, x, y);
                 break;
+            case TAC_ADDI:
+                fprintf(output, "    r%d = r%d + %d\n", r, x, y);
+                break;
             case TAC_SUB:
                 fprintf(output, "    r%d = r%d - r%d\n", r, x, y);
+                break;
+            case TAC_SUBI:
+                fprintf(output, "    r%d = r%d - %d\n", r, x, y);
                 break;
             case TAC_LT:
                 fprintf(output, "    r%d = r%d < r%d\n", r, x, y);
@@ -356,6 +336,9 @@ void codegen_debug(IR ir, FILE *output) {
                 break;
             case TAC_RETURN_VAL:
                 fprintf(output, "    ret = r%d\n", x);
+                break;
+            case TAC_RETURN_INT:
+                fprintf(output, "    ret = %d\n", x);
                 break;
             }
         }
@@ -425,11 +408,38 @@ void codegen_powerpc(IR ir, FILE *output) {
                         x);
                 assert(call_count < 8);
                 break;
+            case TAC_CALL_PUSH_INT:
+                if (x <= 0xFFFF) {
+                    fprintf(output, "    li %d, %d\n", (call_count++)+call_base, inst.x);
+                } else {
+                    fprintf(output, "    li %d, %d\n", call_count+call_base, inst.x & 0xFFFF);
+                    fprintf(output, "    ori %d, %d\n", (call_count++)+call_base, inst.x >> 16);
+                }
+                assert(call_count < 8);
+                break;
+            case TAC_CALL_PUSH_SYM:
+                if (ir.symbols.data[inst.x].string != NULL) {
+                    fprintf(output, "    lis %d, %.*s@ha\n",
+                            call_count + call_base,
+                            PS(ir.symbols.data[inst.x]));
+                    fprintf(output, "    ori %d, %d, %.*s@l\n",
+                            call_count + call_base, call_count + call_base,
+                            PS(ir.symbols.data[inst.x]));
+                } else {
+                    fprintf(output, "    lis %d, data_%d@ha\n",
+                            call_count + call_base, inst.x);
+                    fprintf(output, "    ori %d, %d, data_%d@l\n",
+                            call_count + call_base, call_count + call_base,
+                            inst.x);
+                }
+                call_count++;
+                break;
             case TAC_LOAD_INT:
-                if (x < 65536) {
+                if (x <= 0xFFFF) {
                     fprintf(output, "    li %d, %d\n", r, inst.x);
                 } else {
-                    TODO();
+                    fprintf(output, "    li %d, %d\n", r, inst.x & 0xFFFF);
+                    fprintf(output, "    ori %d, %d\n", r, inst.x >> 16);
                 }
                 break;
             case TAC_LOAD_ARG:
@@ -453,8 +463,14 @@ void codegen_powerpc(IR ir, FILE *output) {
             case TAC_ADD:
                 fprintf(output, "    add %d, %d, %d\n", r, x, y);
                 break;
+            case TAC_ADDI:
+                fprintf(output, "    addi %d, %d, %d\n", r, x, inst.y);
+                break;
             case TAC_SUB:
                 fprintf(output, "    sub %d, %d, %d\n", r, x, y);
+                break;
+            case TAC_SUBI:
+                fprintf(output, "    subi %d, %d, %d\n", r, x, inst.y);
                 break;
             case TAC_LT:
                 fprintf(output, "    cmpw %%cr0, %d, %d\n", y, x);
@@ -473,6 +489,14 @@ void codegen_powerpc(IR ir, FILE *output) {
                 break;
             case TAC_RETURN_VAL:
                 fprintf(output, "    mr 3, %d\n", x);
+                break;
+            case TAC_RETURN_INT:
+                if (x <= 0xFFFF) {
+                    fprintf(output, "    li 3, %d\n", inst.x);
+                } else {
+                    fprintf(output, "    li 3, %d\n", inst.x & 0xFFFF);
+                    fprintf(output, "    ori 3, %d\n", inst.x >> 16);
+                }
                 break;
             }
         }

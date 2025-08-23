@@ -1,9 +1,9 @@
 #ifndef PARSER_H
 #define PARSER_H
 
-#include <stddef.h>
 #include <assert.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "arena.h"
 #include "lexer.h"
@@ -83,7 +83,6 @@ struct _Variable {
 };
 
 void parse(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id);
-void free_ast(ASTArr *ast);
 void dump_ast(ASTArr ast, int indent);
 
 #endif // PARSER_H

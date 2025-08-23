@@ -28,7 +28,10 @@ char *next_arg(int* argc, char ***argv, char* error) {
         }
         exit(1);
     }
-    return *argv[(*argc)--]++;
+    char *result = **argv;
+    (*argc)--;
+    (*argv)++;
+    return result;
 }
 
 void compile(Target target, const char *const file_name, FILE *input,
@@ -68,8 +71,13 @@ void compile(Target target, const char *const file_name, FILE *input,
     CodeGenCTX cg_ctx = { 0 };
     IR ir = codegen(&arena, body, &cg_ctx);
     for (size_t i = 0; i < ir.functions.len; i++) {
-        ir.functions.data[i].temps_count =
-            fold_temporaries(ir.functions.data[i].code);
+        size_t len = 0;
+        while (len != ir.functions.data[i].code.len) {
+            ir.functions.data[i].temps_count =
+                fold_temporaries(ir.functions.data[i].code);
+            peephole_optimization(&ir.functions.data[i].code);
+            len = ir.functions.data[i].code.len;
+        }
     }
     switch (target) {
     case TARGET_DEBUG:

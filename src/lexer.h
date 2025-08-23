@@ -1,7 +1,8 @@
 #ifndef LEXER_H
 #define LEXER_H
 
-#include <stddef.h>
+#include <stdlib.h>
+
 #include "string.h"
 
 extern const char *tok_names[];

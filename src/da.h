@@ -184,17 +184,4 @@ static inline uint32_t fnv_1(String str) {
         }                                                                      \
     } while (0)
 
-#define hm_free(hm)                                                            \
-    do {                                                                       \
-        for (size_t i = 0; i < (hm).length; i++) {                             \
-            if ((hm).table[i].data != NULL) {                                  \
-                free((hm).table[i].data);                                      \
-                (hm).table[i].data = NULL;                                     \
-            }                                                                  \
-        }                                                                      \
-        free((hm).table);                                                      \
-        (hm).table = NULL;                                                     \
-        (hm).length = 0;                                                       \
-    } while (0);
-
 #endif // DA_H
