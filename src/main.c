@@ -128,10 +128,12 @@ int main(int argc, char *argv[]) {
             output = fopen(filename, "w");
             if (!output) {
                 fprintf(stderr, "Couldn't open file `%s`\n", filename);
+                arena_destroy(&arena);
                 return 1;
             }
         } else if (strcmp(arg, "-h") == 0 || strcmp(arg, "--help") == 0) {
             usage(stdout, program);
+            arena_destroy(&arena);
             return 0;
         } else {
             da_append(&arena, inputs, arg);
@@ -145,6 +147,7 @@ int main(int argc, char *argv[]) {
         FILE* input = fopen(filename, "r");
         if (!output) {
             fprintf(stderr, "Couldn't open input file `%s`\n", filename);
+            arena_destroy(&arena);
             return 1;
         }
         compile(target, filename, input, output);
