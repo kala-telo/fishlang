@@ -82,6 +82,13 @@ char *c2o(String cpath) {
     return buffer;
 }
 
+bool rebuild_myself(void) {
+    static char buffer[1000];
+    snprintf(buffer, sizeof(buffer), CC "%s -o ./build", __FILE__);
+    printf("$ %s\n", buffer);
+    return system(buffer) != 0;
+}
+
 bool link(String *files, size_t files_count) {
     struct {
         char *data;
@@ -156,6 +163,8 @@ void usage(char *program) {
 }
 
 int main(int argc, char *argv[]) {
+    if (rebuild_myself())
+        return -1;
     bool run = false;
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {

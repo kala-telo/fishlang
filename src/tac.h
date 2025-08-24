@@ -32,6 +32,8 @@ typedef enum {
     TAC_GOTO,
     TAC_BIZ,
     TAC_LT,
+
+    TAC_NOP,
 } TACOp;
 
 typedef struct {
@@ -46,6 +48,6 @@ typedef struct {
 } TAC32Arr;
 
 uint16_t fold_temporaries(TAC32Arr tac);
-void peephole_optimization(TAC32Arr *tac);
+bool peephole_optimization(TAC32Arr *tac);
 
 #endif // TAC_H

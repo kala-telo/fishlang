@@ -1,7 +1,8 @@
-#include <stdlib.h>
-#include <stdint.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef ARENA_H
@@ -35,7 +36,10 @@ static inline void* arena_alloc(Arena *arena, size_t size) {
         arena->size = s; 
         arena->meta.data_heap_allocated = true;
     }
-    assert(size <= arena->size);
+    if(size > arena->size) {
+        fprintf(stderr, "Failed to allocate size %zu\n", size);
+        abort();
+    }
     arena->allocated += size;
     if (arena->allocated > arena->size) {
         arena->allocated = arena->size;

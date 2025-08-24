@@ -71,12 +71,11 @@ void compile(Target target, const char *const file_name, FILE *input,
     CodeGenCTX cg_ctx = { 0 };
     IR ir = codegen(&arena, body, &cg_ctx);
     for (size_t i = 0; i < ir.functions.len; i++) {
-        size_t len = 0;
-        while (len != ir.functions.data[i].code.len) {
+        bool repeat = true;
+        while (repeat) {
             ir.functions.data[i].temps_count =
                 fold_temporaries(ir.functions.data[i].code);
-            peephole_optimization(&ir.functions.data[i].code);
-            len = ir.functions.data[i].code.len;
+            repeat = peephole_optimization(&ir.functions.data[i].code);
         }
     }
     switch (target) {
@@ -145,7 +144,7 @@ int main(int argc, char *argv[]) {
     for (size_t i = 0; i < inputs.len; i++) {
         char *filename = inputs.data[i];
         FILE* input = fopen(filename, "r");
-        if (!output) {
+        if (input == NULL) {
             fprintf(stderr, "Couldn't open input file `%s`\n", filename);
             arena_destroy(&arena);
             return 1;

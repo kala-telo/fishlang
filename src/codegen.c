@@ -340,6 +340,8 @@ void codegen_debug(IR ir, FILE *output) {
             case TAC_RETURN_INT:
                 fprintf(output, "    ret = %d\n", x);
                 break;
+            case TAC_NOP:
+                break;
             }
         }
         fprintf(output, "}\n");
@@ -497,6 +499,8 @@ void codegen_powerpc(IR ir, FILE *output) {
                     fprintf(output, "    li 3, %d\n", inst.x & 0xFFFF);
                     fprintf(output, "    ori 3, %d\n", inst.x >> 16);
                 }
+                break;
+            case TAC_NOP:
                 break;
             }
         }
