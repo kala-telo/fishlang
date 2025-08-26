@@ -269,14 +269,17 @@ void codegen_debug(IR ir, FILE *output) {
         int call_count = 0;
         for (size_t j = 0; j < func.len; j++) {
             TAC32 inst = func.data[j];
-            uint32_t r = inst.result, x = inst.x, y = inst.y;
+            uint32_t r = inst.result-1, x = inst.x-1, y = inst.y-1;
             switch (inst.function) {
             case TAC_CALL_REG:
-                fprintf(output, "    r%d = r%d()\n", r, x);
+                if (inst.result)
+                    fprintf(output, "    r%d = ", r);
+                fprintf(output, "    r%d()\n", x);
                 break;
             case TAC_CALL_SYM:
-                fprintf(output, "    r%d = %.*s()\n", r,
-                        PS(ir.symbols.data[x]));
+                if (inst.result)
+                    fprintf(output, "    r%d = ", r);
+                fprintf(output, "    %.*s()\n", PS(ir.symbols.data[x]));
                 call_count = 0;
                 break;
             case TAC_CALL_PUSH:
@@ -294,12 +297,16 @@ void codegen_debug(IR ir, FILE *output) {
                 }
                 break;
             case TAC_LOAD_INT:
-                fprintf(output, "    r%d = %d\n", r, x);
+                if (inst.result)
+                    fprintf(output, "    r%d = %d\n", r, x);
                 break;
             case TAC_LOAD_ARG:
-                fprintf(output, "    r%d = arg%d\n", r, x);
+                if (inst.result)
+                    fprintf(output, "    r%d = arg%d\n", r, x);
                 break;
             case TAC_LOAD_SYM:
+                if (!inst.result)
+                    break;
                 if (ir.symbols.data[x].string != NULL) {
                     fprintf(output, "    r%d = [%.*s]\n", r,
                             PS(ir.symbols.data[x]));
@@ -308,22 +315,28 @@ void codegen_debug(IR ir, FILE *output) {
                 }
                 break;
             case TAC_MOV:
-                fprintf(output, "    r%d = r%d\n", r, x);
+                if (inst.result)
+                    fprintf(output, "    r%d = r%d\n", r, x);
                 break;
             case TAC_ADD:
-                fprintf(output, "    r%d = r%d + r%d\n", r, x, y);
+                if (inst.result)
+                    fprintf(output, "    r%d = r%d + r%d\n", r, x, y);
                 break;
             case TAC_ADDI:
-                fprintf(output, "    r%d = r%d + %d\n", r, x, y);
+                if (inst.result)
+                    fprintf(output, "    r%d = r%d + %d\n", r, x, y);
                 break;
             case TAC_SUB:
-                fprintf(output, "    r%d = r%d - r%d\n", r, x, y);
+                if (inst.result)
+                    fprintf(output, "    r%d = r%d - r%d\n", r, x, y);
                 break;
             case TAC_SUBI:
-                fprintf(output, "    r%d = r%d - %d\n", r, x, y);
+                if (inst.result)
+                    fprintf(output, "    r%d = r%d - %d\n", r, x, y);
                 break;
             case TAC_LT:
-                fprintf(output, "    r%d = r%d < r%d\n", r, x, y);
+                if (inst.result)
+                    fprintf(output, "    r%d = r%d < r%d\n", r, x, y);
                 break;
             case TAC_GOTO:
                 fprintf(output, "    b label_%d\n", x);
@@ -392,8 +405,9 @@ void codegen_powerpc(IR ir, FILE *output) {
         fprintf(output, "\n");
         for (size_t j = 0; j < func.len; j++) {
             TAC32 inst = func.data[j];
-            uint32_t r = inst.result + gpr_base, x = inst.x + gpr_base,
-                     y = inst.y + gpr_base;
+            uint32_t r = inst.result + gpr_base - 1,
+                     x = inst.x      + gpr_base - 1,
+                     y = inst.y      + gpr_base - 1;
             switch (inst.function) {
             case TAC_CALL_REG:
                 fprintf(output, "    mtctr %d\n", x);
@@ -437,6 +451,7 @@ void codegen_powerpc(IR ir, FILE *output) {
                 call_count++;
                 break;
             case TAC_LOAD_INT:
+                if (!inst.result) break;
                 if (x <= 0xFFFF) {
                     fprintf(output, "    li %d, %d\n", r, inst.x);
                 } else {
@@ -445,9 +460,11 @@ void codegen_powerpc(IR ir, FILE *output) {
                 }
                 break;
             case TAC_LOAD_ARG:
+                if (!inst.result) break;
                 fprintf(output, "    mr %d, %d\n", r, inst.x + call_base);
                 break;
             case TAC_LOAD_SYM:
+                if (!inst.result) break;
                 if (ir.symbols.data[inst.x].string != NULL) {
                     fprintf(output, "    lis %d, %.*s@ha\n", r,
                             PS(ir.symbols.data[inst.x]));
@@ -460,21 +477,27 @@ void codegen_powerpc(IR ir, FILE *output) {
                 }
                 break;
             case TAC_MOV:
+                if (!inst.result) break;
                 fprintf(output, "    mr %d, %d\n", r, x);
                 break;
             case TAC_ADD:
+                if (!inst.result) break;
                 fprintf(output, "    add %d, %d, %d\n", r, x, y);
                 break;
             case TAC_ADDI:
+                if (!inst.result) break;
                 fprintf(output, "    addi %d, %d, %d\n", r, x, inst.y);
                 break;
             case TAC_SUB:
+                if (!inst.result) break;
                 fprintf(output, "    sub %d, %d, %d\n", r, x, y);
                 break;
             case TAC_SUBI:
+                if (!inst.result) break;
                 fprintf(output, "    subi %d, %d, %d\n", r, x, inst.y);
                 break;
             case TAC_LT:
+                if (!inst.result) break;
                 fprintf(output, "    cmpw %%cr0, %d, %d\n", y, x);
                 fprintf(output, "    mfcr %d\n", r);
                 fprintf(output, "    rlwinm %d, %d, 2, 31, 31\n", r, r);

@@ -111,7 +111,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
             uint32_t color = map[graph[i].data[j]];
             used_registers[color] = true;
         }
-        for (size_t j = 0; j < temps_count; j++) {
+        for (size_t j = 1; j < temps_count; j++) {
             if (!used_registers[j]) {
                 map[i] = j;
                 if (new_temps_count <= j)
@@ -144,12 +144,13 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     return new_temps_count;
 }
 
+// TODO: i should add function that removes nops
 void remove_instruction(TAC32Arr *tac, size_t index) {
-    tac->data[index].function = TAC_NOP;
-    // for (size_t j = index; j < tac->len - 1; j++) {
-    //     memcpy(&tac->data[j], &tac->data[j + 1], sizeof(*tac->data));
-    // }
-    // tac->len--;
+    // tac->data[index].function = TAC_NOP;
+    for (size_t j = index; j < tac->len - 1; j++) {
+        memcpy(&tac->data[j], &tac->data[j + 1], sizeof(*tac->data));
+    }
+    tac->len--;
 }
 
 bool peephole_optimization(TAC32Arr *tac) {
@@ -166,7 +167,6 @@ bool peephole_optimization(TAC32Arr *tac) {
             tac->data[i] = inst2;
             tac->data[i].function = TAC_CALL_PUSH_SYM;
             tac->data[i].x = inst1.x;
-            tac->data[i].result = 0;
             remove_instruction(tac, i+1);
         // rX = <int>
         // CALL_PUSH_INT rX
@@ -176,7 +176,6 @@ bool peephole_optimization(TAC32Arr *tac) {
             tac->data[i] = inst2;
             tac->data[i].function = TAC_CALL_PUSH_INT;
             tac->data[i].x = inst1.x;
-            tac->data[i].result = 0;
             remove_instruction(tac, i+1);
         // rX = <int>
         // ret = rX
@@ -186,7 +185,6 @@ bool peephole_optimization(TAC32Arr *tac) {
             tac->data[i] = inst2;
             tac->data[i].function = TAC_RETURN_INT;
             tac->data[i].x = inst1.x;
-            tac->data[i].result = 0;
             remove_instruction(tac, i+1);
         // rY = <int>
         // rZ = rX - rY
@@ -196,7 +194,6 @@ bool peephole_optimization(TAC32Arr *tac) {
             tac->data[i] = inst2;
             tac->data[i].function = TAC_SUBI;
             tac->data[i].y = inst1.x;
-            tac->data[i].result = inst2.result;
             remove_instruction(tac, i+1);
         // rY = <int>
         // rZ = rX + rY

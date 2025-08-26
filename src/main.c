@@ -73,10 +73,12 @@ void compile(Target target, const char *const file_name, FILE *input,
     for (size_t i = 0; i < ir.functions.len; i++) {
         bool repeat = true;
         while (repeat) {
+            repeat = peephole_optimization(&ir.functions.data[i].code);
             ir.functions.data[i].temps_count =
                 fold_temporaries(ir.functions.data[i].code);
-            repeat = peephole_optimization(&ir.functions.data[i].code);
         }
+        ir.functions.data[i].temps_count =
+            fold_temporaries(ir.functions.data[i].code);
     }
     switch (target) {
     case TARGET_DEBUG:
