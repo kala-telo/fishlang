@@ -11,6 +11,8 @@
 #include "string.h"
 #include "todo.h"
 
+#define ARRLEN(xs) (sizeof(xs)/sizeof(*(xs)))
+
 void generate_string(FILE *output, String str) {
     bool escape = false;
     for (int i = 0; i < str.length; i++) {
@@ -274,12 +276,16 @@ void codegen_debug(IR ir, FILE *output) {
             case TAC_CALL_REG:
                 if (inst.result)
                     fprintf(output, "    r%d = ", r);
-                fprintf(output, "    r%d()\n", x);
+                else
+                    fprintf(output, "    ");
+                fprintf(output, "r%d()\n", x);
                 break;
             case TAC_CALL_SYM:
                 if (inst.result)
                     fprintf(output, "    r%d = ", r);
-                fprintf(output, "    %.*s()\n", PS(ir.symbols.data[x]));
+                else
+                    fprintf(output, "    ");
+                fprintf(output, "%.*s()\n", PS(ir.symbols.data[inst.x]));
                 call_count = 0;
                 break;
             case TAC_CALL_PUSH:
@@ -289,29 +295,29 @@ void codegen_debug(IR ir, FILE *output) {
                 fprintf(output, "    c%d = %d\n", (call_count++), x);
                 break;
             case TAC_CALL_PUSH_SYM:
-                if (ir.symbols.data[x].string != NULL) {
-                    fprintf(output, "    c%d = [%.*s]\n", r,
-                            PS(ir.symbols.data[x]));
+                if (ir.symbols.data[inst.x].string != NULL) {
+                    fprintf(output, "    c%d = [%.*s]\n", inst.result,
+                            PS(ir.symbols.data[inst.x]));
                 } else {
-                    fprintf(output, "    c%d = [data_%d]\n", (call_count++), x);
+                    fprintf(output, "    c%d = [data_%d]\n", (call_count++), inst.x);
                 }
                 break;
             case TAC_LOAD_INT:
                 if (inst.result)
-                    fprintf(output, "    r%d = %d\n", r, x);
+                    fprintf(output, "    r%d = %d\n", r, inst.x);
                 break;
             case TAC_LOAD_ARG:
                 if (inst.result)
-                    fprintf(output, "    r%d = arg%d\n", r, x);
+                    fprintf(output, "    r%d = arg%d\n", r, inst.x);
                 break;
             case TAC_LOAD_SYM:
                 if (!inst.result)
                     break;
-                if (ir.symbols.data[x].string != NULL) {
+                if (ir.symbols.data[inst.x].string != NULL) {
                     fprintf(output, "    r%d = [%.*s]\n", r,
-                            PS(ir.symbols.data[x]));
+                            PS(ir.symbols.data[inst.x]));
                 } else {
-                    fprintf(output, "    r%d = [data_%d]\n", r, x);
+                    fprintf(output, "    r%d = [data_%d]\n", r, inst.x);
                 }
                 break;
             case TAC_MOV:
@@ -324,7 +330,7 @@ void codegen_debug(IR ir, FILE *output) {
                 break;
             case TAC_ADDI:
                 if (inst.result)
-                    fprintf(output, "    r%d = r%d + %d\n", r, x, y);
+                    fprintf(output, "    r%d = r%d + %d\n", r, x, inst.y);
                 break;
             case TAC_SUB:
                 if (inst.result)
@@ -332,26 +338,26 @@ void codegen_debug(IR ir, FILE *output) {
                 break;
             case TAC_SUBI:
                 if (inst.result)
-                    fprintf(output, "    r%d = r%d - %d\n", r, x, y);
+                    fprintf(output, "    r%d = r%d - %d\n", r, x, inst.y);
                 break;
             case TAC_LT:
                 if (inst.result)
                     fprintf(output, "    r%d = r%d < r%d\n", r, x, y);
                 break;
             case TAC_GOTO:
-                fprintf(output, "    b label_%d\n", x);
+                fprintf(output, "    b label_%d\n", inst.x);
                 break;
             case TAC_BIZ:
-                fprintf(output, "    biz r%d, label_%d\n", x, y);
+                fprintf(output, "    biz r%d, label_%d\n", x, inst.y);
                 break;
             case TAC_LABEL:
-                fprintf(output, "label_%d:\n", x);
+                fprintf(output, "label_%d:\n", inst.x);
                 break;
             case TAC_RETURN_VAL:
                 fprintf(output, "    ret = r%d\n", x);
                 break;
             case TAC_RETURN_INT:
-                fprintf(output, "    ret = %d\n", x);
+                fprintf(output, "    ret = %d\n", inst.x);
                 break;
             case TAC_NOP:
                 break;
@@ -412,11 +418,13 @@ void codegen_powerpc(IR ir, FILE *output) {
             case TAC_CALL_REG:
                 fprintf(output, "    mtctr %d\n", x);
                 fprintf(output, "    bctrl\n");
-                fprintf(output, "    mr %d, 3\n", r);
+                if (inst.result)
+                    fprintf(output, "    mr %d, 3\n", r);
                 break;
             case TAC_CALL_SYM:
                 fprintf(output, "    bl %.*s\n", PS(ir.symbols.data[inst.x]));
-                fprintf(output, "    mr %d, 3\n", r);
+                if (inst.result)
+                    fprintf(output, "    mr %d, 3\n", r);
                 call_count = 0;
                 break;
             case TAC_CALL_PUSH:
@@ -537,6 +545,183 @@ void codegen_powerpc(IR ir, FILE *output) {
         fprintf(output, "    addi 1,1,%d\n", stack_frame);
         fprintf(output, "    blr\n");
     }
+    for (size_t i = 0; i < ir.data.len; i++) {
+        StaticVariable var = ir.data.data[i];
+        String name = ir.symbols.data[var.name];
+        fprintf(output, "data_");
+        if (name.string != NULL)
+            fprintf(output, "%.*s", PS(name));
+        else
+            fprintf(output, "%zu", var.name);
+        fprintf(output, ": .byte ");
+        generate_string(output, var.data);
+        fprintf(output, "\n");
+    }
+    fprintf(output, ".section .note.GNU-stack,\"\",@progbits\n");
+}
+
+// stupid ass sys-v x86 calling convention stores args not in a same
+// order as my IR
+typedef struct {
+    // instruction index
+    size_t *data;
+    size_t len, capacity;
+} X86Stack;
+
+static const char *const reg_names[] = {
+    "%ebx", "%esi", "%edi", "%ebp",
+};
+
+void x86_prepare_for_call(FILE* output, TAC32Arr func, X86Stack stack, IR ir) {
+    // kinda ugly but pushl instructions seem to produce shorter
+    // machine code than doing `movl X, N(%esp)`, so i suppose it's
+    // better to reverse the stack this way at compile time
+    for (size_t i = stack.len; i-- > 0;) {
+        TAC32 inst = func.data[stack.data[i]];
+        uint32_t x = inst.x - 1;
+        switch (inst.function) {
+        case TAC_CALL_PUSH:
+            fprintf(output, "    pushl %s\n", reg_names[x]);
+            break;
+        case TAC_CALL_PUSH_SYM:
+            if (ir.symbols.data[inst.x].string != NULL) {
+                fprintf(output, "    pushl $%.*s\n",
+                        PS(ir.symbols.data[inst.x]));
+            } else {
+                fprintf(output, "    pushl $data_%d\n", inst.x);
+            }
+            break;
+        case TAC_CALL_PUSH_INT:
+            fprintf(output, "    pushl $%d\n", inst.x);
+            break;
+        default:
+            fprintf(stderr, "Function: %d\n", inst.function);
+            UNREACHABLE();
+        }
+    }
+}
+
+void codegen_x86_32(IR ir, FILE *output) {
+    // TODO: handle spill, see the powerpc target
+    // FIXME: we refer to esp multiple times, but at the same time it's
+    // constantly moved by function calls, so i should consider using ebp
+    // itstead. this would bring down saved registers to 3 though
+    fprintf(output, ".section .text\n");
+    for (size_t i = 0; i < ir.functions.len; i++) {
+        uint16_t temps_count = ir.functions.data[i].temps_count;
+        assert(temps_count <= ARRLEN(reg_names));
+        fprintf(output, ".global %.*s\n",
+                PS(ir.symbols.data[ir.functions.data[i].name]));
+        fprintf(output, "%.*s:\n",
+                PS(ir.symbols.data[ir.functions.data[i].name]));
+        TAC32Arr func = ir.functions.data[i].code;
+        fprintf(output, "    subl $%d, %%esp\n", temps_count*4);
+        for (size_t j = 0; j < temps_count; j++) {
+            fprintf(output, "    movl %s, %zu(%%esp)\n", reg_names[j], j*4);
+        }
+        fprintf(output, "\n");
+        Arena arena = {0};
+
+        X86Stack stack = {0};
+
+        for (size_t j = 0; j < func.len; j++) {
+            TAC32 inst = func.data[j];
+            uint32_t r = inst.result - 1,
+                     x = inst.x      - 1,
+                     y = inst.y      - 1;
+            switch (inst.function) {
+            case TAC_LOAD_ARG:
+                fprintf(output, "    movl %d(%%esp), %s\n", inst.x*4+4+temps_count*4,
+                        reg_names[r]);
+                break;
+            case TAC_LOAD_SYM:
+                if (ir.symbols.data[inst.x].string != NULL) {
+                    fprintf(output, "    movl $%.*s, %s\n",
+                            PS(ir.symbols.data[inst.x]), reg_names[r]);
+                } else {
+                    fprintf(output, "    movl $data_%d, %s\n", inst.x, reg_names[r]);
+                }
+                break;
+            case TAC_LOAD_INT:
+                fprintf(output, "    movl $%d, %s\n", inst.x, reg_names[r]);
+                break;
+            case TAC_CALL_PUSH:
+            case TAC_CALL_PUSH_INT:
+            case TAC_CALL_PUSH_SYM:
+                da_append(&arena, stack, j);
+                break;
+            case TAC_CALL_REG:
+                x86_prepare_for_call(output, func, stack, ir);
+                fprintf(output, "    call *%s\n", reg_names[x]);
+                if (inst.result)
+                    fprintf(output, "    mov %%eax, %s\n", reg_names[r]);
+                if (stack.len != 0)
+                    fprintf(output, "    addl $%zu, %%esp\n", stack.len*4);
+                stack.len = 0;
+                break;
+            case TAC_CALL_SYM:
+                x86_prepare_for_call(output, func, stack, ir);
+                fprintf(output, "    call %.*s\n", PS(ir.symbols.data[inst.x]));
+                if (inst.result != 0) {
+                    fprintf(output, "    movl %%eax, %s\n", reg_names[r]);
+                }
+                if (stack.len != 0)
+                    fprintf(output, "    addl $%zu, %%esp\n", stack.len*4);
+                stack.len = 0;
+                break;
+            case TAC_RETURN_VAL:
+                fprintf(output, "    movl %s, %%eax\n", reg_names[x]);
+                break;
+            case TAC_RETURN_INT:
+                fprintf(output, "    movl $%d, %%eax\n", inst.x);
+                break;
+            case TAC_MOV:
+                fprintf(output, "    movl %s, %s\n", reg_names[x], reg_names[r]);
+                break;
+            case TAC_ADD:
+                if (x != r)
+                    fprintf(output, "    mov %s, %s\n", reg_names[x], reg_names[r]);
+                fprintf(output, "    addl %s, %s\n", reg_names[y], reg_names[r]);
+                break;
+            case TAC_ADDI:
+                TODO();
+                break;
+            case TAC_SUB:
+                TODO();
+                break;
+            case TAC_SUBI:
+                if (x != r)
+                    fprintf(output, "    mov %s, %s\n", reg_names[x], reg_names[r]);
+                fprintf(output, "    subl $%d, %s\n", inst.y, reg_names[r]);
+                break;
+            case TAC_LABEL:
+                fprintf(output, ".label_%d:\n", inst.x);
+                break;
+            case TAC_GOTO:
+                fprintf(output, "    jmp .label_%d\n", inst.x);
+                break;
+            case TAC_BIZ:
+                fprintf(output, "    cmpl $0, %s\n", reg_names[x]);
+                fprintf(output, "    jz .label_%d\n", inst.y);
+                break;
+            case TAC_LT:
+                fprintf(output, "    cmpl %s, %s\n", reg_names[y], reg_names[x]);
+                fprintf(output, "    setl %%al\n");
+                fprintf(output, "    movzx %%al, %s\n", reg_names[r]);
+                break;
+            case TAC_NOP:
+                break;
+            }
+        }
+        arena_destroy(&arena);
+        fprintf(output, "\n");
+        for (size_t j = 0; j < temps_count; j++) {
+            fprintf(output, "    mov %zu(%%esp), %s\n", j*4, reg_names[j]);
+        }
+        fprintf(output, "    addl $%d, %%esp\n", temps_count*4);
+        fprintf(output, "    ret\n");
+    }
+    fprintf(output, ".section .data\n");
     for (size_t i = 0; i < ir.data.len; i++) {
         StaticVariable var = ir.data.data[i];
         String name = ir.symbols.data[var.name];

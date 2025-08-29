@@ -70,5 +70,6 @@ typedef struct {
 IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx);
 void codegen_powerpc(IR ir, FILE *output);
 void codegen_debug(IR ir, FILE *output);
+void codegen_x86_32(IR ir, FILE *output);
 
 #endif // CODEGEN_H

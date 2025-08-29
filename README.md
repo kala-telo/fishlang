@@ -32,7 +32,8 @@ It took me about 3 attemts to get it to point I'm happy with.
 ## PowerPC
 - https://jimkatz.github.io/powerpc_for_dummies
 - https://www.nxp.com/docs/en/user-guide/MPCFPE_AD_R1.pdf
-- https://www.nxp.com/docs/en/user-guide/MPCFPE_AD_R1.pdf
 - https://devblogs.microsoft.com/oldnewthing/20180810-00/?p=99465
 - https://devblogs.microsoft.com/oldnewthing/20180809-00/?p=99455
 - https://math-atlas.sourceforge.net/devel/assembly/elfspec_ppc.pdf
+## X86_32
+- https://wiki.osdev.org/Calling_Conventions

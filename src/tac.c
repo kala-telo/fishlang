@@ -141,7 +141,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     }
     #undef REMAP
     arena_destroy(&scratch);
-    return new_temps_count;
+    return new_temps_count-1;
 }
 
 // TODO: i should add function that removes nops
