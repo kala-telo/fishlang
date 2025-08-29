@@ -67,6 +67,8 @@ typedef struct {
     SymbolTable variables;
 } CodeGenCTX;
 
+void generate_string(FILE *output, String str);
+
 IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx);
 void codegen_powerpc(IR ir, FILE *output);
 void codegen_debug(IR ir, FILE *output);

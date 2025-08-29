@@ -13,19 +13,20 @@
 #define DEBUG 1
 #endif
 
-#define CC "clang "
 #if DEBUG
+#define CC "clang "
 #define CFLAGS "-pedantic -std=c99 -fsanitize=address -O2 -D_FORTIFY_SOURCE=3 -g -Wall -Wextra "
 #else
+#define CC "cc "
 #define CFLAGS "-static -pedantic -std=c99 -O3 -Wall -Wextra "
 #endif
 
 #define LD CC
 #define TARGET "fishc"
-#define AS "powerpc-unknown-linux-musl-as "
-#define PPC_LD "powerpc-unknown-linux-musl-gcc -static "
 
 #define RED "\033[31m"
+#define GREEN "\033[32m"
+#define YELLOW "\033[33m"
 #define RESET "\033[0m"
 
 #define ARRLEN(xs) (sizeof(xs) / sizeof(*(xs)))
@@ -35,6 +36,24 @@
          da_append_str_i++) {                                                  \
         da_append((arena), (xs), (x)[da_append_str_i]);                        \
     }
+
+typedef enum {
+    STATUS_OK,
+    STATUS_BUILD_FAIL,
+    STATUS_WRONG_OUTPUT
+} Status;
+typedef enum {
+    TARGET_PPC,
+    TARGET_X86_32,
+} Target;
+
+static const char *const targets[] = {
+    [TARGET_PPC] = "ppc", [TARGET_X86_32] = "x86_32"};
+
+static const char *const target_compiler[] = {
+    [TARGET_PPC] = "powerpc-unknown-linux-musl-gcc",
+    [TARGET_X86_32] = "i686-pc-linux-musl-gcc",
+};
 
 static bool endswith(String str, String suf) {
     if (str.length < suf.length) return false;
@@ -119,40 +138,69 @@ bool build_c(String path) {
     return system(buffer) != 0;
 }
 
+Status run_file(Target target, String file) {
+    char asm_path[1000], buffer[1000];
+    snprintf(asm_path, sizeof(asm_path), ".build/examples/%.*s.S",
+             file.length - 4, file.string);
+    snprintf(buffer, sizeof(buffer), "./" TARGET " -t %s examples/%.*s -o %s",
+             targets[target], PS(file), asm_path);
+    if (system(buffer) != 0) {
+        return STATUS_BUILD_FAIL;
+    }
+    snprintf(buffer, sizeof(buffer), "%s -static %s -o .build/examples/%.*s-%s", target_compiler[target],
+             asm_path, file.length - 4, file.string, targets[target]);
+    if (system(buffer) != 0) {
+        return STATUS_BUILD_FAIL;
+    }
+    return STATUS_OK;
+}
+
 bool build_examples() {
     DIR *examples_dir = opendir("examples");
     if (examples_dir == NULL)
         return true;
     struct dirent *de;
-    char buffer[1000];
+    int the_longest_name = 0;
+    while ((de = readdir(examples_dir)) != NULL) {
+        int name_len = strlen(de->d_name);
+        if (name_len > the_longest_name) {
+            the_longest_name = name_len;
+        }
+    }
+    rewinddir(examples_dir);
     while ((de = readdir(examples_dir)) != NULL) {
         int len = strlen(de->d_name);
         if (!endswith((String){de->d_name, len}, S(".fsh"))) {
             continue;
         }
-        char asm_path[1000];
-        snprintf(asm_path, sizeof(asm_path), ".build/examples/%.*s.S", len - 4,
-                 de->d_name);
-        char obj_path[1000];
-        snprintf(obj_path, sizeof(obj_path), ".build/examples/%.*s.o", len - 4,
-                 de->d_name);
-        snprintf(buffer, sizeof(buffer), "./" TARGET " examples/%s -o %s",
-                 de->d_name, asm_path);
-        printf("$ %s\n", buffer);
-        if (system(buffer) != 0) {
-            printf(RED"Example `%s` failed to compile! "RESET"\n", de->d_name);
-            continue;
+        printf("%*s: ", the_longest_name, de->d_name);
+        for (size_t i = ARRLEN(targets); i-- > 0;) {
+            Status result = run_file(i, (String){de->d_name, len});
+            switch (result) {
+            case STATUS_BUILD_FAIL:
+                printf(RED "x " RESET);
+                break;
+            case STATUS_OK:
+                printf(GREEN "✓ " RESET);
+                break;
+            case STATUS_WRONG_OUTPUT:
+                printf(YELLOW "? " RESET);
+                break;
+            }
         }
-        snprintf(buffer, sizeof(buffer), AS " %s -o %s", asm_path, obj_path);
-        printf("$ %s\n", buffer);
-        if (system(buffer) != 0) {
-            printf(RED"Example `%s` failed to assemble!\n"RESET, de->d_name);
-            continue;
+        printf("\n");
+    }
+    for (size_t i = 0; i < ARRLEN(targets); i++) {
+        printf("%*s  ", the_longest_name, "");
+        for (size_t j = ARRLEN(targets); j-- > 0;) {
+            if (i == j) {
+                printf("╰> ");
+                printf("%s", targets[j]);
+            } else if (j > i) {
+                printf("│ ");
+            }
         }
-        snprintf(buffer, sizeof(buffer), PPC_LD " %s -o .build/examples/%.*s", obj_path, len - 4,
-                 de->d_name);
-        printf("$ %s\n", buffer);
-        system(buffer);
+        printf("\n");
     }
     closedir(examples_dir);
     return false;
@@ -177,6 +225,8 @@ int main(int argc, char *argv[]) {
 
     if (create_dir(".build"))
         return -1;
+    if (create_dir(".build/targets"))
+        return -1;
     if (create_gitignore(".build/.gitignore"))
         return -1;
 
@@ -187,6 +237,9 @@ int main(int argc, char *argv[]) {
         S("src/main.c"),
         S("src/tac.c"),
         S("src/typing.c"),
+        S("src/targets/x86.c"),
+        S("src/targets/ppc.c"),
+        S("src/targets/debug.c"),
     };
 
     for (size_t i = 0; i < ARRLEN(files); i++) {
@@ -197,5 +250,6 @@ int main(int argc, char *argv[]) {
     if (!run) return 0;
 
     if (create_dir(".build/examples")) return -1;
+    printf("\n\n");
     if (build_examples()) return -1;
 }
