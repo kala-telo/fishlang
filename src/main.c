@@ -15,11 +15,13 @@ typedef enum {
     TARGET_PPC,
     TARGET_X86_32,
     TARGET_DEBUG,
+    TARGET_MIPS,
 } Target;
 const char *const target_names[] = {
     [TARGET_PPC] = "ppc",
     [TARGET_X86_32] = "x86_32",
     [TARGET_DEBUG] = "debug",
+    [TARGET_MIPS] = "mips",
 };
 #define ARRLEN(xs) (sizeof(xs)/sizeof(*(xs)))
 
@@ -92,6 +94,9 @@ void compile(Target target, const char *const file_name, FILE *input,
     case TARGET_X86_32:
         codegen_x86_32(ir, out);
         break;
+    case TARGET_MIPS:
+        codegen_mips(ir, out);
+        break;
     }
 
     arena_destroy(&arena);
@@ -102,6 +107,7 @@ void usage(FILE *out, const char *const program) {
     fprintf(out, "Usage: %s [-h] [-t <target>] [-o <output file>] <input file>\n\n", program);
     fprintf(out, "\t-t\tcompilation target\n");
     fprintf(out, "\t\t\tppc\t32 bit powerpc GAS\n");
+    fprintf(out, "\t\t\tmips\tmips GAS\n");
     fprintf(out, "\t\t\tx86_32\t32 bit Intel x86 GAS\n");
     fprintf(out, "\t\t\tdebug\thuman-readable pseudocode\n");
     fprintf(out, "\t-h\tShows this help message\n");

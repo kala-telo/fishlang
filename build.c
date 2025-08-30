@@ -45,14 +45,16 @@ typedef enum {
 typedef enum {
     TARGET_PPC,
     TARGET_X86_32,
+    TARGET_MIPS,
 } Target;
 
 static const char *const targets[] = {
-    [TARGET_PPC] = "ppc", [TARGET_X86_32] = "x86_32"};
+    [TARGET_PPC] = "ppc", [TARGET_X86_32] = "x86_32", [TARGET_MIPS] = "mips"};
 
 static const char *const target_compiler[] = {
     [TARGET_PPC] = "powerpc-unknown-linux-musl-gcc",
     [TARGET_X86_32] = "i686-pc-linux-musl-gcc",
+    [TARGET_MIPS] = "mips-unknown-linux-musl-gcc",
 };
 
 static bool endswith(String str, String suf) {
@@ -239,6 +241,7 @@ int main(int argc, char *argv[]) {
         S("src/typing.c"),
         S("src/targets/x86.c"),
         S("src/targets/ppc.c"),
+        S("src/targets/mips.c"),
         S("src/targets/debug.c"),
     };
 

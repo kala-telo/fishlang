@@ -37,3 +37,5 @@ It took me about 3 attemts to get it to point I'm happy with.
 - https://math-atlas.sourceforge.net/devel/assembly/elfspec_ppc.pdf
 ## X86_32
 - https://wiki.osdev.org/Calling_Conventions
+## MIPS
+- https://en.wikibooks.org/wiki/MIPS_Assembly/Register_File
