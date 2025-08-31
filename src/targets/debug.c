@@ -5,8 +5,9 @@
 void codegen_debug(IR ir, FILE *output) {
     for (size_t i = 0; i < ir.functions.len; i++) {
         TAC32Arr func = ir.functions.data[i].code;
-        fprintf(output, "%.*s {\n",
-                PS(ir.symbols.data[ir.functions.data[i].name]));
+        fprintf(output, "%.*s %d {\n",
+                PS(ir.symbols.data[ir.functions.data[i].name]),
+                ir.functions.data[i].temps_count);
         int call_count = 0;
         for (size_t j = 0; j < func.len; j++) {
             TAC32 inst = func.data[j];

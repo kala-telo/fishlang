@@ -73,25 +73,7 @@ static bool ispure(TACOp op) {
     }
 }
 
-// TODO: try to remember tf am i doing here with 0th register and assign some as
-// "unused", so it wouldn't do register pressure and generate unneccessary
-// movement
-//
-// UPD: map structure on line 100 seems to relate to this
-uint16_t fold_temporaries(TAC32Arr tac) {
-    Arena scratch = {0};
-    size_t temps_count = 0;
-    for (size_t i = 0; i < tac.len; i++) {
-        if (tac.data[i].result >= temps_count)
-            temps_count = tac.data[i].result + 1;
-    }
-
-    int *first = arena_alloc(&scratch, temps_count * sizeof(int));
-    memset(first, 0xff, temps_count * sizeof(int));
-
-    int *last = arena_alloc(&scratch, temps_count * sizeof(int));
-    memset(last, 0xff, temps_count * sizeof(int));
-
+void find_first_last_usage(TAC32Arr tac, int *first, int *last) {
     for (size_t i = 0; i < tac.len; i++) {
         if (tac.data[i].result != 0) {
             last[tac.data[i].result] = i;
@@ -113,7 +95,34 @@ uint16_t fold_temporaries(TAC32Arr tac) {
             break;
         }
     }
+}
 
+uint16_t count_temps(TAC32Arr tac) {
+    uint16_t temps_count = 0;
+    for (size_t i = 0; i < tac.len; i++) {
+        if (tac.data[i].result > temps_count)
+            temps_count = tac.data[i].result;
+    }
+    return temps_count;
+}
+
+// TODO: try to remember tf am i doing here with 0th register and assign some as
+// "unused", so it wouldn't do register pressure and generate unneccessary
+// movement
+//
+// UPD: map structure on line 100 seems to relate to this
+uint16_t fold_temporaries(TAC32Arr tac) {
+    Arena scratch = {0};
+    // +1 for 0th
+    size_t temps_count = count_temps(tac)+1;
+
+    int *first = arena_alloc(&scratch, temps_count * sizeof(int));
+    memset(first, 0xff, temps_count * sizeof(int));
+
+    int *last = arena_alloc(&scratch, temps_count * sizeof(int));
+    memset(last, 0xff, temps_count * sizeof(int));
+
+    find_first_last_usage(tac, first, last);
     struct {
         int *data;
         size_t len, capacity;
@@ -122,11 +131,8 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     bool *unused = arena_alloc(&scratch, sizeof(*unused)*temps_count);
     memset(unused, 0, temps_count*sizeof(*unused));
 
-
     for (size_t i = 1; i < temps_count; i++) {
         for (size_t j = 1; j < temps_count; j++) {
-            if (first[i] == last[i])
-                unused[i] = true;
             if (ranges_intersect(first[i], last[i], first[j], last[j]) &&
                 i != j)
                 da_append(&scratch, graph[i], j);
@@ -137,7 +143,6 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     // memset(map, 0xff, temps_count*sizeof(*map));
     memset(map, 0, temps_count*sizeof(*map));
 
-    uint16_t new_temps_count = 0;
     bool *used_registers = arena_alloc(&scratch, temps_count*sizeof(bool));
     for (size_t i = 1; i < temps_count; i++) {
         if (unused[i]) continue;
@@ -149,8 +154,6 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         for (size_t j = 1; j < temps_count; j++) {
             if (!used_registers[j]) {
                 map[i] = j;
-                if (new_temps_count < j)
-                    new_temps_count = j; 
                 goto success;
             }
         }
@@ -176,7 +179,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     }
     #undef REMAP
     arena_destroy(&scratch);
-    return new_temps_count;
+    return count_temps(tac);
 }
 
 void remove_nops(TAC32Arr *tac) {
@@ -194,14 +197,26 @@ void remove_instruction(TAC32Arr *tac, size_t index) {
 }
 
 bool remove_unused(TAC32Arr *tac) {
+    Arena arena = {0};
+    uint16_t temps_count = count_temps(*tac)+1;
+    int *first = arena_alloc(&arena, sizeof(*first)*temps_count);
+    memset(first, 0xff, temps_count * sizeof(*first));
+    int *last = arena_alloc(&arena, sizeof(*last)*temps_count);
+    memset(last, 0xff, temps_count * sizeof(*last));
+    bool *unused = arena_alloc(&arena, sizeof(*unused) * temps_count);
+    find_first_last_usage(*tac, first, last);
+    for (uint16_t i = 0; i < temps_count; i++) {
+        unused[i] = first[i] == last[i];
+    }
     bool changed = false;
     for (size_t i = 0; i < tac->len; i++) {
         TAC32 inst = tac->data[i];
-        if (ispure(inst.function) && inst.result == 0) {
+        if (ispure(inst.function) && unused[inst.result]) {
             remove_instruction(tac, i);
             changed = true;
         }
     }
+    arena_destroy(&arena);
     if (changed) {
         remove_nops(tac);
     }
