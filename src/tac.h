@@ -49,5 +49,6 @@ typedef struct {
 
 uint16_t fold_temporaries(TAC32Arr tac);
 bool peephole_optimization(TAC32Arr *tac);
+bool remove_unused(TAC32Arr *tac);
 
 #endif // TAC_H

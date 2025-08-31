@@ -44,6 +44,35 @@ static Arity get_arity(TACOp op) {
     }
 }
 
+// determines is it safe to optimize out the instruction based on its result
+static bool ispure(TACOp op) {
+    switch (op) {
+    case TAC_ADD:
+    case TAC_SUB:
+    case TAC_LT:
+    case TAC_MOV:
+    case TAC_ADDI:
+    case TAC_SUBI:
+    case TAC_NOP:
+    case TAC_LOAD_INT:
+    case TAC_LOAD_ARG:
+    case TAC_LOAD_SYM:
+        return true;
+    case TAC_CALL_REG:
+    case TAC_CALL_PUSH:
+    case TAC_RETURN_VAL:
+    case TAC_BIZ:
+    case TAC_CALL_PUSH_INT:
+    case TAC_CALL_PUSH_SYM:
+    case TAC_CALL_SYM:
+    case TAC_LABEL:
+    case TAC_RETURN_INT:
+    case TAC_GOTO:
+        default:
+        return false;
+    }
+}
+
 // TODO: try to remember tf am i doing here with 0th register and assign some as
 // "unused", so it wouldn't do register pressure and generate unneccessary
 // movement
@@ -90,9 +119,14 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         size_t len, capacity;
     } *graph = arena_alloc(&scratch, temps_count*sizeof(*graph));
     memset(graph, 0, temps_count*sizeof(*graph));
+    bool *unused = arena_alloc(&scratch, sizeof(*unused)*temps_count);
+    memset(unused, 0, temps_count*sizeof(*unused));
+
 
     for (size_t i = 1; i < temps_count; i++) {
         for (size_t j = 1; j < temps_count; j++) {
+            if (first[i] == last[i])
+                unused[i] = true;
             if (ranges_intersect(first[i], last[i], first[j], last[j]) &&
                 i != j)
                 da_append(&scratch, graph[i], j);
@@ -106,6 +140,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     uint16_t new_temps_count = 0;
     bool *used_registers = arena_alloc(&scratch, temps_count*sizeof(bool));
     for (size_t i = 1; i < temps_count; i++) {
+        if (unused[i]) continue;
         memset(used_registers, 0, temps_count*sizeof(bool));
         for (size_t j = 0; j < graph[i].len; j++) {
             uint32_t color = map[graph[i].data[j]];
@@ -114,8 +149,8 @@ uint16_t fold_temporaries(TAC32Arr tac) {
         for (size_t j = 1; j < temps_count; j++) {
             if (!used_registers[j]) {
                 map[i] = j;
-                if (new_temps_count <= j)
-                    new_temps_count = j+1; 
+                if (new_temps_count < j)
+                    new_temps_count = j; 
                 goto success;
             }
         }
@@ -141,16 +176,36 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     }
     #undef REMAP
     arena_destroy(&scratch);
-    return new_temps_count-1;
+    return new_temps_count;
 }
 
-// TODO: i should add function that removes nops
-void remove_instruction(TAC32Arr *tac, size_t index) {
-    // tac->data[index].function = TAC_NOP;
-    for (size_t j = index; j < tac->len - 1; j++) {
-        memcpy(&tac->data[j], &tac->data[j + 1], sizeof(*tac->data));
+void remove_nops(TAC32Arr *tac) {
+    size_t j = 0;
+    for (size_t i = 0; i < tac->len; i++) {
+        if (tac->data[i].function != TAC_NOP) {
+            tac->data[j++] = tac->data[i];
+        }
     }
-    tac->len--;
+    tac->len = j;
+}
+
+void remove_instruction(TAC32Arr *tac, size_t index) {
+    tac->data[index].function = TAC_NOP;
+}
+
+bool remove_unused(TAC32Arr *tac) {
+    bool changed = false;
+    for (size_t i = 0; i < tac->len; i++) {
+        TAC32 inst = tac->data[i];
+        if (ispure(inst.function) && inst.result == 0) {
+            remove_instruction(tac, i);
+            changed = true;
+        }
+    }
+    if (changed) {
+        remove_nops(tac);
+    }
+    return changed;
 }
 
 bool peephole_optimization(TAC32Arr *tac) {
@@ -208,5 +263,6 @@ bool peephole_optimization(TAC32Arr *tac) {
             changed = false;
         }
     }
+    remove_nops(tac);
     return changed;
 }

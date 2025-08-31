@@ -38,20 +38,17 @@ void codegen_debug(IR ir, FILE *output) {
                     fprintf(output, "    c%d = [%.*s]\n", inst.result,
                             PS(ir.symbols.data[inst.x]));
                 } else {
-                    fprintf(output, "    c%d = [data_%d]\n", (call_count++), inst.x);
+                    fprintf(output, "    c%d = [data_%d]\n", (call_count++),
+                            inst.x);
                 }
                 break;
             case TAC_LOAD_INT:
-                if (inst.result)
-                    fprintf(output, "    r%d = %d\n", r, inst.x);
+                fprintf(output, "    r%d = %d\n", r, inst.x);
                 break;
             case TAC_LOAD_ARG:
-                if (inst.result)
-                    fprintf(output, "    r%d = arg%d\n", r, inst.x);
+                fprintf(output, "    r%d = arg%d\n", r, inst.x);
                 break;
             case TAC_LOAD_SYM:
-                if (!inst.result)
-                    break;
                 if (ir.symbols.data[inst.x].string != NULL) {
                     fprintf(output, "    r%d = [%.*s]\n", r,
                             PS(ir.symbols.data[inst.x]));
@@ -60,28 +57,22 @@ void codegen_debug(IR ir, FILE *output) {
                 }
                 break;
             case TAC_MOV:
-                if (inst.result)
-                    fprintf(output, "    r%d = r%d\n", r, x);
+                fprintf(output, "    r%d = r%d\n", r, x);
                 break;
             case TAC_ADD:
-                if (inst.result)
-                    fprintf(output, "    r%d = r%d + r%d\n", r, x, y);
+                fprintf(output, "    r%d = r%d + r%d\n", r, x, y);
                 break;
             case TAC_ADDI:
-                if (inst.result)
-                    fprintf(output, "    r%d = r%d + %d\n", r, x, inst.y);
+                fprintf(output, "    r%d = r%d + %d\n", r, x, inst.y);
                 break;
             case TAC_SUB:
-                if (inst.result)
-                    fprintf(output, "    r%d = r%d - r%d\n", r, x, y);
+                fprintf(output, "    r%d = r%d - r%d\n", r, x, y);
                 break;
             case TAC_SUBI:
-                if (inst.result)
-                    fprintf(output, "    r%d = r%d - %d\n", r, x, inst.y);
+                fprintf(output, "    r%d = r%d - %d\n", r, x, inst.y);
                 break;
             case TAC_LT:
-                if (inst.result)
-                    fprintf(output, "    r%d = r%d < r%d\n", r, x, y);
+                fprintf(output, "    r%d = r%d < r%d\n", r, x, y);
                 break;
             case TAC_GOTO:
                 fprintf(output, "    b label_%d\n", inst.x);
@@ -99,6 +90,8 @@ void codegen_debug(IR ir, FILE *output) {
                 fprintf(output, "    ret = %d\n", inst.x);
                 break;
             case TAC_NOP:
+                // i had to debug it so it's helpful
+                fprintf(output, "    nop\n");
                 break;
             }
         }

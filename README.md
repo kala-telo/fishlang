@@ -4,15 +4,21 @@ still WIP. You can see examples in `examples/` directory, though at the current
 moment they are closer to just tests, the only "real" example being recursive fibonacci
 program in `examples/recursive_fib.fsh`. The language goal is to provide playground in
 compiler development to me. <br>
-That being said, here is a vague roadmap:
-- [ ] Tests
+## That being said, here is a vague roadmap:
+- [x] Tests
 - [ ] Enough features to write complex programs
 - [ ] More optimizations
-- [ ] MIPS, ARM and other backends
 - [ ] Standard library to not dependent on libc
 - [ ] FP features
 - [ ] Replace GAS with my own assembler
 - [ ] Make my own linker
+## Backends
+- [x] PowerPC
+- [x] MIPS
+- [x] x86_32
+- [ ] ARM
+- [ ] RISC-V
+- ..?
 # Getting started
 ```shell
 $ cc build.c -o build && ./build run

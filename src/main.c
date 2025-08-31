@@ -9,6 +9,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "tac.h"
+#include "todo.h"
 #include "typing.h"
 
 typedef enum {
@@ -16,12 +17,14 @@ typedef enum {
     TARGET_X86_32,
     TARGET_DEBUG,
     TARGET_MIPS,
+    TARGET_AST,
 } Target;
 const char *const target_names[] = {
     [TARGET_PPC] = "ppc",
     [TARGET_X86_32] = "x86_32",
-    [TARGET_DEBUG] = "debug",
     [TARGET_MIPS] = "mips",
+    [TARGET_DEBUG] = "debug",
+    [TARGET_AST] = "ast",
 };
 #define ARRLEN(xs) (sizeof(xs)/sizeof(*(xs)))
 
@@ -36,6 +39,81 @@ char *next_arg(int* argc, char ***argv, char* error) {
     (*argc)--;
     (*argv)++;
     return result;
+}
+
+void dump_ast(ASTArr ast, FILE* out) {
+    for (size_t i = 0; i < ast.len; i++) {
+        AST node = ast.data[i];
+        switch (node.kind) {
+        case AST_BOOL:
+            fprintf(out, "    %zu [label=\"bool\"];\n", node.id);
+            break;
+        case AST_CALL:
+            fprintf(out, "    %zu [label=\"call (%.*s)\"];\n", node.id,
+                   PS(node.as.call.callee));
+            for (size_t j = 0; j < node.as.call.args.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.call.args.data[j].id);
+            }
+            dump_ast(node.as.call.args, out);
+            break;
+        case AST_DEF:
+            fprintf(out, "    %zu [label=\"def (%.*s)\"];\n", node.id,
+                   PS(node.as.def.name));
+            for (size_t j = 0; j < node.as.def.body.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.def.body.data[j].id);
+            }
+            dump_ast(node.as.def.body, out);
+            break;
+        case AST_EXTERN:
+            fprintf(out, "    %zu [label=\"extern (%.*s)\"];\n", node.id,
+                   PS(node.as.external.name));
+            for (size_t j = 0; j < node.as.external.body.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.external.body.data[j].id);
+            }
+            dump_ast(node.as.external.body, out);
+            break;
+        case AST_FUNC:
+            fprintf(out, "    %zu [label=\"fn(", node.id);
+            for (size_t j = 0; j < node.as.func.args.len; j++) {
+                fprintf(out, "%.*s ", PS(node.as.func.args.data[j].name));
+            }
+            fprintf(out, ")\"];\n");
+            for (size_t j = 0; j < node.as.func.body.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.func.body.data[j].id);
+            }
+            dump_ast(node.as.func.body, out);
+            break;
+        case AST_LIST:
+            fprintf(out, "    %zu [label=\"list\"];\n", node.id);
+            for (size_t j = 0; j < node.as.list.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.list.data[j].id);
+            }
+            dump_ast(node.as.list, out);
+            break;
+        case AST_NAME:
+            fprintf(out, "    %zu [label=\"name (%.*s)\"];\n", node.id, PS(node.as.name));
+            break;
+        case AST_NUMBER:
+            fprintf(out, "    %zu [label=\"number (%ld)\"];\n", node.id, node.as.number);
+            break;
+        case AST_STRING:
+            fprintf(out, "    %zu [label=\"string ('", node.id);
+            for (int k = 0; k < node.as.string.length; k++) {
+                putc(node.as.string.string[k], out);
+                if (node.as.string.string[k] == '\\')
+                    putc('\\', out);
+            }
+            fprintf(out,"')\"];\n");
+            break;
+        case AST_VARDEF:
+            fprintf(out, "    %zu [label=\"var\"];\n", node.id);
+            for (size_t j = 0; j < node.as.var.body.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.var.body.data[j].id);
+            }
+            dump_ast(node.as.var.body, out);
+            break;
+        }
+    }
 }
 
 void compile(Target target, const char *const file_name, FILE *input,
@@ -67,6 +145,13 @@ void compile(Target target, const char *const file_name, FILE *input,
             parse(&arena, &lex, &body, NULL, &node_id);
     }
 
+    if (target == TARGET_AST) {
+        fprintf(out, "digraph {\n");
+        dump_ast(body, out);
+        fprintf(out, "}\n");
+        goto exit;
+    }
+
     TypeTable tt = {0};
     extract_types(&arena, body, &tt);
 
@@ -75,12 +160,11 @@ void compile(Target target, const char *const file_name, FILE *input,
     CodeGenCTX cg_ctx = { 0 };
     IR ir = codegen(&arena, body, &cg_ctx);
     for (size_t i = 0; i < ir.functions.len; i++) {
-        bool repeat = true;
-        while (repeat) {
+        bool repeat;
+        do {
             repeat = peephole_optimization(&ir.functions.data[i].code);
-            ir.functions.data[i].temps_count =
-                fold_temporaries(ir.functions.data[i].code);
-        }
+            repeat |= remove_unused(&ir.functions.data[i].code);
+        } while (repeat);
         ir.functions.data[i].temps_count =
             fold_temporaries(ir.functions.data[i].code);
     }
@@ -97,8 +181,11 @@ void compile(Target target, const char *const file_name, FILE *input,
     case TARGET_MIPS:
         codegen_mips(ir, out);
         break;
+    case TARGET_AST:
+        UNREACHABLE();
     }
 
+exit:
     arena_destroy(&arena);
     free(str.string);
 }
@@ -110,6 +197,7 @@ void usage(FILE *out, const char *const program) {
     fprintf(out, "\t\t\tmips\tmips GAS\n");
     fprintf(out, "\t\t\tx86_32\t32 bit Intel x86 GAS\n");
     fprintf(out, "\t\t\tdebug\thuman-readable pseudocode\n");
+    fprintf(out, "\t\t\tast\tpure ast dump in graphviz format\n");
     fprintf(out, "\t-h\tShows this help message\n");
     fprintf(out, "\t-o\tSpecifies the output file, the default one stdout\n");
 }
