@@ -27,6 +27,7 @@
 #define RED "\033[31m"
 #define GREEN "\033[32m"
 #define YELLOW "\033[33m"
+#define BLUE "\033[34m"
 #define RESET "\033[0m"
 
 #define ARRLEN(xs) (sizeof(xs) / sizeof(*(xs)))
@@ -40,7 +41,8 @@
 typedef enum {
     STATUS_OK,
     STATUS_BUILD_FAIL,
-    STATUS_WRONG_OUTPUT
+    STATUS_WRONG_OUTPUT,
+    STATUS_NO_TEST,
 } Status;
 typedef enum {
     TARGET_PPC,
@@ -55,6 +57,11 @@ static const char *const target_compiler[] = {
     [TARGET_PPC] = "powerpc-unknown-linux-musl-gcc",
     [TARGET_X86_32] = "i686-pc-linux-musl-gcc",
     [TARGET_MIPS] = "mips-unknown-linux-musl-gcc",
+};
+static const char *const runners[] = {
+    [TARGET_PPC] = "qemu-ppc",
+    [TARGET_X86_32] = "qemu-i386",
+    [TARGET_MIPS] = "qemu-mips",
 };
 
 static bool endswith(String str, String suf) {
@@ -103,6 +110,12 @@ char *c2o(String cpath) {
     return buffer;
 }
 
+char *file2test(String file) {
+    static char buffer[1000];
+    snprintf(buffer, sizeof(buffer), "examples/.%.*s.test", PS(file));
+    return buffer;
+}
+
 bool rebuild_myself(void) {
     static char buffer[1000];
     snprintf(buffer, sizeof(buffer), CC "%s -o ./build", __FILE__);
@@ -140,8 +153,8 @@ bool build_c(String path) {
     return system(buffer) != 0;
 }
 
-Status run_file(Target target, String file) {
-    char asm_path[1000], buffer[1000];
+Status run_file(Target target, String file, bool gen_test) {
+    char asm_path[1000], buffer[1000], output[1000];
     snprintf(asm_path, sizeof(asm_path), ".build/examples/%.*s.S",
              file.length - 4, file.string);
     snprintf(buffer, sizeof(buffer), "./" TARGET " -t %s examples/%.*s -o %s",
@@ -149,36 +162,86 @@ Status run_file(Target target, String file) {
     if (system(buffer) != 0) {
         return STATUS_BUILD_FAIL;
     }
-    snprintf(buffer, sizeof(buffer), "%s -static %s -o .build/examples/%.*s-%s", target_compiler[target],
-             asm_path, file.length - 4, file.string, targets[target]);
+    snprintf(output, sizeof(output), ".build/examples/%.*s-%s", file.length - 4,
+             file.string, targets[target]);
+    snprintf(buffer, sizeof(buffer), "%s -static %s -o %s",
+             target_compiler[target], asm_path, output);
     if (system(buffer) != 0) {
         return STATUS_BUILD_FAIL;
+    }
+    if (gen_test) {
+        FILE *reference = fopen(file2test(file), "w");
+        assert(reference != NULL);
+        snprintf(buffer, sizeof(buffer), "%s %s", runners[target], output);
+        FILE *file_stdout = popen(buffer, "r");
+        int c;
+        while ((c = getc(file_stdout)) != EOF) {
+            putc(c, reference);
+        }
+        fclose(reference);
+        pclose(file_stdout);
+    } else {
+        FILE *reference = fopen(file2test(file), "r");
+        if (reference == NULL)
+            return STATUS_NO_TEST;
+        snprintf(buffer, sizeof(buffer), "%s %s", runners[target], output);
+        FILE *file_stdout = popen(buffer, "r");
+        int c1;
+        while ((c1 = getc(reference)) != EOF) {
+            int c2 = getc(file_stdout);
+            if (c1 != c2) {
+                fclose(reference);
+                pclose(file_stdout);
+                return STATUS_WRONG_OUTPUT;
+            }
+        }
+        fclose(reference);
+        pclose(file_stdout);
     }
     return STATUS_OK;
 }
 
-bool build_examples() {
+bool build_examples(bool gen_test) {
     DIR *examples_dir = opendir("examples");
     if (examples_dir == NULL)
         return true;
+    Arena arena = {0};
     struct dirent *de;
     int the_longest_name = 0;
+    int file_count = 0;
     while ((de = readdir(examples_dir)) != NULL) {
+        if (de->d_name[0] == '.') continue;
         int name_len = strlen(de->d_name);
         if (name_len > the_longest_name) {
             the_longest_name = name_len;
         }
+        file_count++;
     }
+    Status(*results)[ARRLEN(targets)] =
+        arena_alloc(&arena, sizeof(*results) * file_count);
+    char (*names)[256] = arena_alloc(&arena, sizeof(*names) * file_count);
     rewinddir(examples_dir);
+    int file_number = 0;
     while ((de = readdir(examples_dir)) != NULL) {
+        if (*de->d_name == '.')
+            continue;
+        strncpy(names[file_number], de->d_name, 256);
         int len = strlen(de->d_name);
         if (!endswith((String){de->d_name, len}, S(".fsh"))) {
             continue;
         }
-        printf("%*s: ", the_longest_name, de->d_name);
-        for (size_t i = ARRLEN(targets); i-- > 0;) {
-            Status result = run_file(i, (String){de->d_name, len});
-            switch (result) {
+        for (int i = 0; i < ARRLEN(targets); i++) {
+            results[file_number][i] = run_file(i, (String){de->d_name, len}, gen_test);
+        }
+        file_number++;
+    }
+    if (gen_test)
+        goto exit;
+    printf("\n\n");
+    for (int i = 0; i < file_count; i++) {
+        printf("%*s: ", the_longest_name, names[i]);
+        for (size_t j = ARRLEN(targets); j-- > 0;) {
+            switch (results[i][j]) {
             case STATUS_BUILD_FAIL:
                 printf(RED "x " RESET);
                 break;
@@ -187,6 +250,9 @@ bool build_examples() {
                 break;
             case STATUS_WRONG_OUTPUT:
                 printf(YELLOW "? " RESET);
+                break;
+            case STATUS_NO_TEST:
+                printf(BLUE "! " RESET);
                 break;
             }
         }
@@ -204,24 +270,33 @@ bool build_examples() {
         }
         printf("\n");
     }
+exit:
     closedir(examples_dir);
+    arena_destroy(&arena);
     return false;
 }
 
 void usage(char *program) {
-    printf("%s [-h] [run]\n", program);
+    printf("%s [-h] [run] [gen-test]\n", program);
 }
 
 int main(int argc, char *argv[]) {
     if (rebuild_myself())
         return -1;
-    bool run = false;
-    for (int i = 0; i < argc; i++) {
+    bool run = false,
+         gen_test = false;
+    for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0) {
             usage(argv[0]);
             return 0;
         } else if (strcmp(argv[i], "run") == 0) {
             run = true;
+        } else if (strcmp(argv[i], "gen-test") == 0) {
+            gen_test = true;
+        } else {
+            printf("Invalid option: `%s`\n", argv[i]);
+            usage(argv[0]);
+            return 1;
         }
     }
 
@@ -250,9 +325,10 @@ int main(int argc, char *argv[]) {
             return -1;
     }
     link(files, ARRLEN(files));
-    if (!run) return 0;
-
-    if (create_dir(".build/examples")) return -1;
-    printf("\n\n");
-    if (build_examples()) return -1;
+    if (run || gen_test) {
+        if (create_dir(".build/examples")) return -1;
+        printf("\n\n");
+        if (build_examples(gen_test))
+            return -1;
+    }
 }
