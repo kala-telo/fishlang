@@ -23,8 +23,7 @@ compiler development to me. <br>
 ```shell
 $ cc build.c -o build && ./build run
 ```
-You'll get the examples built in `.build/examples/`. You can run them as usual binaries
-if you are on PowerPC, otherwise you can use `qemu-ppc`.
+You'll get the examples built in `.build/examples/`. It will try to build and test them for all platforms. You'll need compilers and VMs for that.
 
 # Notes
 ## Typechecking

@@ -164,6 +164,7 @@ void compile(Target target, const char *const file_name, FILE *input,
         do {
             repeat = peephole_optimization(&ir.functions.data[i].code);
             repeat |= remove_unused(&ir.functions.data[i].code);
+            repeat |= constant_propagation(&ir.functions.data[i].code);
         } while (repeat);
         ir.functions.data[i].temps_count =
             fold_temporaries(ir.functions.data[i].code);

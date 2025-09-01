@@ -131,7 +131,7 @@ void codegen_x86_32(IR ir, FILE *output) {
                 fprintf(output, "    addl %s, %s\n", reg_names[y], reg_names[r]);
                 break;
             case TAC_ADDI:
-                TODO();
+                fprintf(output, "    addl $%d, %s\n", inst.y, reg_names[r]);
                 break;
             case TAC_SUB:
                 TODO();

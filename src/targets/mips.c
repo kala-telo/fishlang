@@ -76,10 +76,10 @@ void codegen_mips(IR ir, FILE *output) {
                 break;
             case TAC_CALL_PUSH_SYM:
                 if (ir.symbols.data[inst.x].string != NULL) {
-                    fprintf(output, "    lui $%d, %%hi($%.*s)\n",
+                    fprintf(output, "    lui $%d, %%hi(%.*s)\n",
                             call_count + call_base,
                             PS(ir.symbols.data[inst.x]));
-                    fprintf(output, "    addiu $%d, %%lo($%.*s)\n", call_count + call_base, PS(ir.symbols.data[inst.x]));
+                    fprintf(output, "    addiu $%d, %%lo(%.*s)\n", call_count + call_base, PS(ir.symbols.data[inst.x]));
                 } else {
                     fprintf(output, "    lui $%d, %%hi($data_%d)\n",
                             call_count + call_base, inst.x);
@@ -120,7 +120,7 @@ void codegen_mips(IR ir, FILE *output) {
                 fprintf(output, "    add $%d, $%d, $%d\n", r, x, y);
                 break;
             case TAC_ADDI:
-                TODO();
+                fprintf(output, "    addi $%d, $%d, %d\n", r, x, inst.y);
                 break;
             case TAC_SUB:
                 TODO();

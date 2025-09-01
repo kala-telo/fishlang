@@ -3,8 +3,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "tac.h"
+
 #include "da.h"
+#include "tac.h"
+#include "todo.h"
 
 static bool ranges_intersect(int f1, int t1, int f2, int t2) {
     return !(t1 < f2 || t2 < f1);
@@ -205,15 +207,18 @@ bool remove_unused(TAC32Arr *tac) {
     memset(last, 0xff, temps_count * sizeof(*last));
     bool *unused = arena_alloc(&arena, sizeof(*unused) * temps_count);
     find_first_last_usage(*tac, first, last);
-    for (uint16_t i = 0; i < temps_count; i++) {
+    for (uint16_t i = 1; i < temps_count; i++) {
         unused[i] = first[i] == last[i];
     }
     bool changed = false;
     for (size_t i = 0; i < tac->len; i++) {
-        TAC32 inst = tac->data[i];
-        if (ispure(inst.function) && unused[inst.result]) {
-            remove_instruction(tac, i);
-            changed = true;
+        TAC32 *inst = &tac->data[i];
+        if (unused[inst->result]) {
+            inst->result = 0;
+            if (ispure(inst->function)) {
+                remove_instruction(tac, i);
+                changed = true;
+            }
         }
     }
     arena_destroy(&arena);
@@ -223,61 +228,125 @@ bool remove_unused(TAC32Arr *tac) {
     return changed;
 }
 
+bool constant_propagation(TAC32Arr *tac) {
+    bool changed = false;
+    Arena arena = {0};
+    bool *is_constant =
+        arena_alloc(&arena, sizeof(*is_constant) * count_temps(*tac));
+    struct {
+        uint32_t v;
+        enum {
+            INT,
+            SYM,
+        } kind;
+    } *constant_value =
+        arena_alloc(&arena, sizeof(*constant_value) * count_temps(*tac));
+    memset(is_constant, 0, sizeof(*is_constant)*count_temps(*tac));
+    for (size_t i = 0; i < tac->len; i++) {
+        TAC32 *inst = &tac->data[i];
+        uint16_t r = inst->result;
+        switch (inst->function) {
+        case TAC_LOAD_SYM:
+            constant_value[r].kind = SYM;
+            is_constant[r] = true;
+            constant_value[r].v = inst->x;
+            break;
+        case TAC_LOAD_INT:
+            constant_value[r].kind = INT;
+            is_constant[r] = true;
+            constant_value[r].v = inst->x;
+            break;
+        case TAC_LOAD_ARG:
+        case TAC_ADD:
+        case TAC_SUB:
+        case TAC_LT:
+        case TAC_MOV:
+        case TAC_ADDI:
+        case TAC_SUBI:
+        case TAC_CALL_REG:
+        case TAC_CALL_PUSH:
+        case TAC_CALL_PUSH_INT:
+        case TAC_CALL_PUSH_SYM:
+        case TAC_CALL_SYM:
+            is_constant[r] = false;
+        case TAC_NOP:
+        case TAC_BIZ:
+        case TAC_LABEL:
+        case TAC_RETURN_INT:
+        case TAC_RETURN_VAL:
+        case TAC_GOTO:
+            break;
+        }
+        switch (inst->function) {
+        case TAC_ADD:
+            if (is_constant[inst->x] && !is_constant[inst->y]) {
+                if (constant_value[inst->x].kind == SYM) break;
+                inst->function = TAC_ADDI;
+                uint32_t c = inst->x;
+                inst->x = inst->y;
+                inst->y = constant_value[c].v;
+                changed = true;
+            } else if (!is_constant[inst->x] && is_constant[inst->y]) {
+                if (constant_value[inst->y].kind == SYM) break;
+                inst->function = TAC_ADDI;
+                inst->y = constant_value[inst->y].v;
+                changed = true;
+            }
+            break;
+        case TAC_SUB:
+            if (constant_value[inst->x].kind == SYM) break;
+            if (!is_constant[inst->x] && is_constant[inst->y]) {
+                inst->function = TAC_SUBI;
+                inst->y = constant_value[inst->y].v;
+                changed = true;
+            }
+            break;
+        case TAC_CALL_PUSH:
+            if (!is_constant[inst->x]) break;
+            switch (constant_value[inst->x].kind) {
+            case INT:
+                inst->function = TAC_CALL_PUSH_INT;
+                break;
+            case SYM:
+                inst->function = TAC_CALL_PUSH_SYM;
+                break;
+            }
+            inst->x = constant_value[inst->x].v;
+            changed = true;
+            break;
+        case TAC_RETURN_VAL:
+            if (!is_constant[inst->x]) break;
+            switch (constant_value[inst->x].kind) {
+            case INT:
+                inst->function = TAC_RETURN_INT;
+                break;
+            case SYM:
+                TODO();
+                break;
+            }
+            inst->x = constant_value[inst->x].v;
+            changed = true;
+            break;
+        default:
+            break;
+        }
+    }
+    arena_destroy(&arena);
+    return changed;
+}
+
 bool peephole_optimization(TAC32Arr *tac) {
+    (void)tac;
+    return false;
+#if 0
     if (tac->len < 2) return false;
     bool changed = true;
     for (size_t i = 0; i < tac->len-1; i++) {
         TAC32 inst1 = tac->data[i + 0];
         TAC32 inst2 = tac->data[i + 1];
-        // rX = <symbol>
-        // CALL_PUSH_SYM rX
-        if (       inst1.function == TAC_LOAD_SYM &&
-                   inst2.function == TAC_CALL_PUSH &&
-                   inst2.x == inst1.result) {
-            tac->data[i] = inst2;
-            tac->data[i].function = TAC_CALL_PUSH_SYM;
-            tac->data[i].x = inst1.x;
-            remove_instruction(tac, i+1);
-        // rX = <int>
-        // CALL_PUSH_INT rX
-        } else if (inst1.function == TAC_LOAD_INT &&
-                   inst2.function == TAC_CALL_PUSH &&
-                   inst2.x == inst1.result) {
-            tac->data[i] = inst2;
-            tac->data[i].function = TAC_CALL_PUSH_INT;
-            tac->data[i].x = inst1.x;
-            remove_instruction(tac, i+1);
-        // rX = <int>
-        // ret = rX
-        } else if (inst1.function == TAC_LOAD_INT &&
-                   inst2.function == TAC_RETURN_VAL &&
-                   inst2.x == inst1.result) {
-            tac->data[i] = inst2;
-            tac->data[i].function = TAC_RETURN_INT;
-            tac->data[i].x = inst1.x;
-            remove_instruction(tac, i+1);
-        // rY = <int>
-        // rZ = rX - rY
-        } else if (inst1.function == TAC_LOAD_INT &&
-                   inst2.function == TAC_SUB &&
-                   inst2.y == inst1.result) {
-            tac->data[i] = inst2;
-            tac->data[i].function = TAC_SUBI;
-            tac->data[i].y = inst1.x;
-            remove_instruction(tac, i+1);
-        // rY = <int>
-        // rZ = rX + rY
-        } else if (inst1.function == TAC_LOAD_INT &&
-                   inst2.function == TAC_ADD &&
-                   inst2.y == inst1.result) {
-            tac->data[i] = inst2;
-            tac->data[i].function = TAC_ADDI;
-            tac->data[i].y = inst1.x;
-            remove_instruction(tac, i+1);
-        } else {
-            changed = false;
-        }
+        changed = false;
     }
     remove_nops(tac);
     return changed;
+#endif
 }
