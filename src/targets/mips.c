@@ -142,6 +142,9 @@ void codegen_mips(IR ir, FILE *output) {
             case TAC_LT:
                 fprintf(output, "    slt $%d, $%d, $%d\n", r, x, y);
                 break;
+            case TAC_LTI:
+                fprintf(output, "    slti $%d, $%d, %d\n", r, x, inst.y);
+                break;
             case TAC_NOP:
                 TODO();
                 break;

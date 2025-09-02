@@ -75,6 +75,9 @@ void codegen_debug(IR ir, FILE *output) {
             case TAC_LT:
                 fprintf(output, "    r%d = r%d < r%d\n", r, x, y);
                 break;
+            case TAC_LTI:
+                fprintf(output, "    r%d = r%d < %d\n", r, x, inst.y);
+                break;
             case TAC_GOTO:
                 fprintf(output, "    b label_%d\n", inst.x);
                 break;

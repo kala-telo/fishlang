@@ -133,6 +133,12 @@ void codegen_powerpc(IR ir, FILE *output) {
                 fprintf(output, "    mfcr %d\n", r);
                 fprintf(output, "    rlwinm %d, %d, 2, 31, 31\n", r, r);
                 break;
+            case TAC_LTI:
+                if (!inst.result) break;
+                fprintf(output, "    cmpwi %%cr0, %d, %d\n", x, inst.y);
+                fprintf(output, "    mfcr %d\n", r);
+                fprintf(output, "    rlwinm %d, %d, 1, 31, 31\n", r, r);
+                break;
             case TAC_LABEL:
                 fprintf(output, ".label%d:\n", inst.x);
                 break;

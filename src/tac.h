@@ -29,7 +29,7 @@ typedef enum {
     TAC_SUBI,
 
     TAC_LT,
-    // TAC_LTI
+    TAC_LTI,
 
     TAC_LABEL,
     TAC_GOTO,

@@ -31,6 +31,7 @@ static Arity get_arity(TACOp op) {
     case TAC_MOV:
     case TAC_ADDI:
     case TAC_SUBI:
+    case TAC_LTI:
         return A_UNARY;
     case TAC_RETURN_INT:
     case TAC_LOAD_ARG:
@@ -59,6 +60,7 @@ static bool ispure(TACOp op) {
     case TAC_LOAD_INT:
     case TAC_LOAD_ARG:
     case TAC_LOAD_SYM:
+    case TAC_LTI:
         return true;
     case TAC_CALL_REG:
     case TAC_CALL_PUSH:
@@ -70,7 +72,6 @@ static bool ispure(TACOp op) {
     case TAC_LABEL:
     case TAC_RETURN_INT:
     case TAC_GOTO:
-        default:
         return false;
     }
 }
@@ -257,11 +258,12 @@ bool constant_propagation(TAC32Arr *tac) {
             constant_value[r].v = inst->x;
             break;
         case TAC_LOAD_ARG:
-        case TAC_ADD:
-        case TAC_SUB:
-        case TAC_LT:
         case TAC_MOV:
+        case TAC_LT:
+        case TAC_LTI:
+        case TAC_ADD:
         case TAC_ADDI:
+        case TAC_SUB:
         case TAC_SUBI:
         case TAC_CALL_REG:
         case TAC_CALL_PUSH:
@@ -313,6 +315,14 @@ bool constant_propagation(TAC32Arr *tac) {
             }
             inst->x = constant_value[inst->x].v;
             changed = true;
+            break;
+        case TAC_LT:
+            if (!is_constant[inst->x] && is_constant[inst->y]) {
+                if (constant_value[inst->y].kind != INT) break;
+                inst->function = TAC_LTI;
+                inst->y = constant_value[inst->y].v;
+                changed = true;
+            }
             break;
         case TAC_RETURN_VAL:
             if (!is_constant[inst->x]) break;
