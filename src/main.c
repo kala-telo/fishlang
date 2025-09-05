@@ -14,11 +14,13 @@
 typedef enum {
     TARGET_PPC,
     TARGET_X86_32,
+    TARGET_PDP8,
     TARGET_DEBUG,
 } Target;
 const char *const target_names[] = {
     [TARGET_PPC] = "ppc",
     [TARGET_X86_32] = "x86_32",
+    [TARGET_PDP8] = "pdp8",
     [TARGET_DEBUG] = "debug",
 };
 #define ARRLEN(xs) (sizeof(xs)/sizeof(*(xs)))
@@ -91,6 +93,9 @@ void compile(Target target, const char *const file_name, FILE *input,
         break;
     case TARGET_X86_32:
         codegen_x86_32(ir, out);
+        break;
+    case TARGET_PDP8:
+        codegen_pdp8(ir, out);
         break;
     }
 

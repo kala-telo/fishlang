@@ -45,10 +45,11 @@ typedef enum {
 typedef enum {
     TARGET_PPC,
     TARGET_X86_32,
+    TARGET_PDP8
 } Target;
 
 static const char *const targets[] = {
-    [TARGET_PPC] = "ppc", [TARGET_X86_32] = "x86_32"};
+    [TARGET_PPC] = "ppc", [TARGET_X86_32] = "x86_32", [TARGET_PDP8] = "pdp8"};
 
 static const char *const target_compiler[] = {
     [TARGET_PPC] = "powerpc-unknown-linux-musl-gcc",
@@ -240,6 +241,7 @@ int main(int argc, char *argv[]) {
         S("src/targets/x86.c"),
         S("src/targets/ppc.c"),
         S("src/targets/debug.c"),
+        S("src/targets/pdp8.c"),
     };
 
     for (size_t i = 0; i < ARRLEN(files); i++) {
