@@ -83,6 +83,5 @@ struct _Variable {
 };
 
 void parse(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id);
-void dump_ast(ASTArr ast, int indent);
 
 #endif // PARSER_H
