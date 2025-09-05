@@ -183,7 +183,7 @@ void codegen_powerpc(IR ir, FILE *output) {
         else
             fprintf(output, "%zu", var.name);
         fprintf(output, ": .byte ");
-        generate_string(output, var.data);
+        generate_string(output, var.data, false);
         fprintf(output, "\n");
     }
     fprintf(output, ".section .note.GNU-stack,\"\",@progbits\n");
