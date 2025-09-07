@@ -1,0 +1,193 @@
+*1
+        HLT
+TMP1,
+*5
+N3,     7775    / -3
+P2,     2         / 2
+P3,     3       / 3
+N1,     7777    / -1
+*10
+SP1,    STACK-1 / Основной SP, после вызова функции
+SP2,    0       / Старый SP, до вызова функции
+TMP2,
+TMP3,
+TMP4,
+N24,    7750    / -24
+N4,     777     / -4
+*20
+REGS,
+*50
+STACK,
+*200
+        JMP main
+/ Команды
+MQA = 7501
+MQL = 7421
+DVI = 7407
+*300
+/ Стандартная функция puts
+puts,   0
+        TAD SP1
+        TAD N3
+        DCA TMP2
+PTSL,   TAD I TMP2
+        SNA
+         JMP PTSEND
+        TSF
+         JMP .-1
+        TLS
+        JMP PTSL
+PTSEND, CLA CLL
+        JMP I puts
+/ Стандартная функция printf
+printf, 0
+        TAD SP1
+        TAD N3
+        DCA TMP2        / Указатель на строку с форматом
+        TAD TMP2
+        DCA TMP1+1      / Указатель на аргументы для вставки
+PRTFL,  TAD I TMP2      / Цикл чтения, обработки и вывода символов
+        SNA
+         JMP PRTFND
+        DCA TMP1
+        TAD TMP1
+        TAD NPRCNT
+        SZA
+         JMP PRTFSD
+        JMP PRTFPC
+PRTFSD, CLA             / Стандартный вывод символа
+        TAD TMP1
+        TSF
+         JMP .-1
+        TLS
+        JMP PRTFL
+PRTFPC, CLA             / Обработка %
+        TAD I TMP2
+        TAD DTD
+        SNA
+         JMP PRTFD
+        TAD DTPRCT
+        SNA
+         JMP PRTFPT
+        JMP PRTFL
+PRTFD,  TAD TMP1+1      / Вывод числа (d)
+        TAD N3
+        DCA TMP1+1
+        TAD I TMP1+1
+        DCA TMP1
+        / Вывод минуса у отрицательного числа
+        TAD TMP1
+        SMA
+         JMP PRTFPS
+        CIA
+        DCA TMP1
+        TAD PMINUS
+        TSF
+         JMP .-1
+        TLS
+
+        / Вывод тысяч
+PRTFPS, CLA
+        TAD POST3       / Сохранение 1000 в делителе
+        DCA T3DVSR
+        TAD TMP1
+        MQL DVI         / Деление результата на 1000
+T3DVSR, 0000
+        DCA TMP1        / Сохранение остатка
+        CLA MQA         / Получение частного
+        TAD DIGGEN      / Создание кода символа частного
+        TSF             / Вывод цифры в терминал
+         JMP .-1
+        TLS
+        CLA
+
+        / Вывод сотен
+	TAD POST2       / Сохранение 100 в делителе
+        DCA T2DVSR
+        TAD TMP1
+        MQL DVI         / Деление результата на 100
+T2DVSR, 0000
+        DCA TMP1        / Сохранение остатка
+        CLA MQA         / Получение частного
+        TAD DIGGEN      / Создание кода символа частного
+        TSF             / Вывод цифры в терминал
+         JMP .-1
+        TLS
+        CLA
+
+        / Вывод десятков
+	TAD POST1       / Сохранение 10 в делителе
+        DCA T1DVSR
+        TAD TMP1
+        MQL DVI         / Деление результата на 10
+T1DVSR, 0000
+        DCA TMP1        / Сохранение остатка
+        CLA MQA         / Получение частного
+        TAD DIGGEN      / Создание кода символа частного
+        TSF             / Вывод цифры в терминал
+         JMP .-1
+        TLS
+        CLA
+
+        / Вывод единиц
+        TAD TMP1
+	TAD DIGGEN
+	TSF             / Вывод цифры в терминал
+         JMP .-1
+        TLS
+
+        JMP PRTFL
+PRTFPT, CLA             / Вывод %
+        TAD PPRCNT
+        DCA TMP1
+        JMP PRTFSD
+PRTFND, CLA CLL         / Выход из цикла
+        JMP I printf
+        / Константы для printf, чтобы не засорять ими нулевую страницу
+PPRCNT, 0045            / '%'
+PMINUS, 0055            / '-'
+NPRCNT, 7733            / -'%'
+DTD,    7634            / Определение 'd' 
+DTPRCT, 0077            / Определение '%' полсе 'd'
+POST3,	1750		/ 1000
+POST2,	0144		/ 100
+POST1,	0012		/ 10
+DIGGEN,	0060		/ Слагаемое для получения символа цифры
+*400
+/ Пролог функции
+PRLG,   0
+        TAD SP2
+        TAD P3
+        DCA TMP2        / TMP2 - указатель на область стека c регистрами
+        TAD REGS
+        TAD N1
+        DCA TMP3        / TMP3 - указатель на регистры для чтения
+        TAD TMP3
+        DCA TMP4        / TMP4 - указатель на регистры для стирания
+        TAD I PRLG
+        DCA TMP1        / TMP1 - счётчик
+PRLGL,  TAD I TMP3
+        DCA I TMP2
+        DCA I TMP4
+        ISZ TMP1
+         JMP PRLGL
+        TAD SP2
+        TAD N1
+        DCA SP2
+        ISZ PRLG
+        JMP I PRLG
+/ Эпилог функции
+EPLG,   0
+        TAD SP2
+        TAD P3
+        DCA TMP2        / TMP2 - указатель на область стека c регистрами
+        TAD REGS
+        TAD N1
+        DCA TMP3        / TMP3 - указатель на регистры для записи
+        TAD I EPLG
+        DCA TMP1        / TMP1 - счётчик
+EPLGL,  TAD I TMP2
+        DCA I TMP3
+        ISZ TMP1
+         JMP EPLGL
+        JMP I SP2

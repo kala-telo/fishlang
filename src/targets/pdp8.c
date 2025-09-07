@@ -4,6 +4,8 @@
 #include "../todo.h"
 #include "../da.h"
 
+#define STDFN_COUNT 2
+
 /*
 typedef struct {
     struct {
@@ -51,6 +53,11 @@ typedef struct {
     size_t *data;
     size_t len, capacity;
 } PDP8Stack;
+
+typedef struct {
+    String name;
+    bool used;
+} PDP8StdFn;
 
 static size_t create_const(Arena *arena, PDP8ConstArr *consts, uint32_t number, short *const_size) {
     *const_size = 0; // Размер константы в 12-битных словах
@@ -128,69 +135,22 @@ static void pdp8_prepare_for_call(FILE* output, TAC32Arr func, PDP8Stack stack, 
 }
 
 void codegen_pdp8(IR ir, FILE *output) {
-    fprintf(output, "\
-*1\n\
-\tHLT\n\
-TMP1,\n\
-*5\n\
-N3,\t7775 / -3\n\
-P2,\t2 / 2\n\
-P3,\t3 / 3\n\
-N1,\t7777 / -1\n\
-*10\n\
-SP1,\tSTACK-1\n\
-SP2,\n\
-TMP2,\n\
-TMP3,\n\
-TMP4,\n\
-N24,\t7750 / -24\n\
-N4,\t7774 / -4\n\
-*20\n\
-REGS,\n\
-*50\n\
-STACK,\n\
-*300\n\
-/ Пролог функции\n\
-PRLG,\t0\n\
-\tTAD SP2\n\
-\tTAD P3\n\
-\tDCA TMP2 / TMP2 - указатель на область стека c регистрами\n\
-\tTAD REGS\n\
-\tTAD N1\n\
-\tDCA TMP3 / TMP3 - указатель на регистры для чтения\n\
-\tTAD TMP3\n\
-\tDCA TMP4 / TMP4 - указатель на регистры для стирания\n\
-\tTAD I PRLG\n\
-\tDCA TMP1 / TMP1 - счётчик\n\
-PRLGL,\tTAD I TMP3\n\
-\tDCA I TMP2\n\
-\tDCA I TMP4\n\
-\tISZ TMP1\n\
-\t JMP PRLGL\n\
-\tTAD SP2\n\
-\tTAD N1\n\
-\tDCA SP2\n\
-\tISZ PRLG\n\
-\tJMP I PRLG\n\
-/ Эпилог функции\n\
-EPLG,\t0\n\
-\tTAD SP2\n\
-\tTAD P3\n\
-\tDCA TMP2 / TMP2 - указатель на область стека c регистрами\n\
-\tTAD REGS\n\
-\tTAD N1\n\
-\tDCA TMP3 / TMP3 - указатель на регистры для записи\n\
-\tTAD I EPLG\n\
-\tDCA TMP1 / TMP1 - счётчик\n\
-EPLGL,\tTAD I TMP2\n\
-\tDCA I TMP3\n\
-\tISZ TMP1\n\
-\t JMP EPLGL\n\
-\tJMP I SP2\n\
-/    \\/ Сгенерированный код \\/\n\
-");
+    FILE *fstd = fopen("stdlib/pdp8.pal", "r");
+    if (fstd == NULL) {
+        fprintf(stderr, "Cannot open file stdlib/pdp8.pal\n");
+        abort();
+    }
+    int c;
+    while ((c = fgetc(fstd)) != EOF) {
+        fputc(c, output);
+    }
+
     Arena arena = {0};
     PDP8ConstArr consts = {0};
+    String std_functions[STDFN_COUNT] = {
+        S("puts"),
+        S("printf"),
+    };
 
     for (size_t i = 0; i < ir.functions.len; i++) {
         PDP8Stack stack = {0};
@@ -201,6 +161,8 @@ EPLGL,\tTAD I TMP2\n\
         /*fprintf(output, "/ %.*s\n", PS(ir.symbols.data[func.name]));
         fprintf(output, "d%zu,\t0\n", func.name);*/
         fprintf(output, "%.*s,\t0\n", PS(ir.symbols.data[func.name]));
+        if (string_eq(ir.symbols.data[func.name], S("main")))
+            fprintf(output, "\tDCA 200\n");
         fprintf(output, "\tTAD .-1\n");
         fprintf(output, "\tDCA I SP2\n");
         if (temps_count > 0) {
@@ -216,7 +178,7 @@ EPLGL,\tTAD I TMP2\n\
 
             short const_size;
             size_t const_idx;
-            uint32_t number;
+            bool is_std;
 
             switch (inst.function) {
             case TAC_CALL_REG:
@@ -248,7 +210,15 @@ EPLGL,\tTAD I TMP2\n\
                 fputc('\n', output);*/
                 fprintf(output, "\tJMS I %.*s\n", PS(ir.symbols.data[inst.x]));
 
-                if (inst.result) {
+                is_std = false;
+                for (int i = 0; i < STDFN_COUNT; i++) {
+                    if (string_eq(std_functions[i], ir.symbols.data[inst.x])) {
+                        is_std = true;
+                        break;
+                    }
+                }
+
+                if (inst.result && !is_std) {
                     fprintf(output, "\tISZ SP2\n");
                     fprintf(output, "\tTAD I SP2\n");
                     fprintf(output, "\tDCA REGS+%o\n", r*3);
@@ -263,6 +233,7 @@ EPLGL,\tTAD I TMP2\n\
                     fprintf(output, "\tTAD SP2\n");
                     fprintf(output, "\tDCA SP1\n");
                 }
+                
                 store_sp2 = true;
                 stack.len = 0;
                 break;
@@ -415,12 +386,16 @@ EPLGL,\tTAD I TMP2\n\
             fputc('\n', output);
         }
         
-        if (temps_count > 0) {
-            fprintf(output, "\tJMS EPLG\n");
-            fprintf(output, "\t%o\n", -temps_count & 07777);
-        }
-        else {
-            fprintf(output, "\tJMP I SP2\n");
+        if (string_eq(ir.symbols.data[func.name], S("main"))) {
+            fprintf(output, "\tHLT\n");
+        } else {
+            if (temps_count > 0) {
+                fprintf(output, "\tJMS EPLG\n");
+                fprintf(output, "\t%o\n", -temps_count & 07777);
+            }
+            else {
+                fprintf(output, "\tJMP I SP2\n");
+            }
         }
     }
 
