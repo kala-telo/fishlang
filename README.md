@@ -4,21 +4,26 @@ still WIP. You can see examples in `examples/` directory, though at the current
 moment they are closer to just tests, the only "real" example being recursive fibonacci
 program in `examples/recursive_fib.fsh`. The language goal is to provide playground in
 compiler development to me. <br>
-That being said, here is a vague roadmap:
-- [ ] Tests
+## That being said, here is a vague roadmap:
+- [x] Tests
 - [ ] Enough features to write complex programs
 - [ ] More optimizations
-- [ ] MIPS, ARM and other backends
 - [ ] Standard library to not dependent on libc
 - [ ] FP features
 - [ ] Replace GAS with my own assembler
 - [ ] Make my own linker
+## Backends
+- [x] PowerPC
+- [x] MIPS
+- [x] x86_32
+- [ ] ARM
+- [ ] RISC-V
+- ..?
 # Getting started
 ```shell
 $ cc build.c -o build && ./build run
 ```
-You'll get the examples built in `.build/examples/`. You can run them as usual binaries
-if you are on PowerPC, otherwise you can use `qemu-ppc`.
+You'll get the examples built in `.build/examples/`. It will try to build and test them for all platforms. You'll need compilers and VMs for that.
 
 # Notes
 ## Typechecking
@@ -37,3 +42,5 @@ It took me about 3 attemts to get it to point I'm happy with.
 - https://math-atlas.sourceforge.net/devel/assembly/elfspec_ppc.pdf
 ## X86_32
 - https://wiki.osdev.org/Calling_Conventions
+## MIPS
+- https://en.wikibooks.org/wiki/MIPS_Assembly/Register_File

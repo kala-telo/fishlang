@@ -210,13 +210,6 @@ IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
                       da_pop(ctx->args_stack));
             }
             codegen(arena, node.as.var.body, ctx);
-            for (size_t j = 0; j < node.as.var.variables.len; j++) {
-                codegen(arena, node.as.var.variables.data[j].value, ctx);
-                hms_rem(ctx->variables,
-                      node.as.var.variables.data[j].definition.name);
-            }
-            da_append(arena, ctx->current_function->code,
-                      ((TAC32){0, TAC_RETURN_VAL, da_pop(ctx->args_stack), 0}));
             break;
         case AST_LIST:
             assert(ctx->current_function != NULL);
