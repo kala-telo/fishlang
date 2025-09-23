@@ -63,7 +63,7 @@ void generate_string(FILE *output, String str, bool pdp8) {
                 escape = true;
             } else {
                 if (pdp8)
-                    fprintf(output, "\t%d\n", c);
+                    fprintf(output, "\t%d\n", c & 07777);
                 else
                     fprintf(output, "%d, ", c);
             }

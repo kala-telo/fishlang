@@ -1,193 +1,272 @@
 *1
         HLT
-TMP1,
-*5
+TMP1,   0
+PRLGP,  PRLG
+EPLGP,  EPLG
 N3,     7775    / -3
-P2,     2         / 2
-P3,     3       / 3
-N1,     7777    / -1
+P2,     2       / 2
+P4,     4       / 4
 *10
 SP1,    STACK-1 / Основной SP, после вызова функции
-SP2,    0       / Старый SP, до вызова функции
-TMP2,
-TMP3,
-TMP4,
-N24,    7750    / -24
-N4,     777     / -4
+SP2,    STACK-1 / Старый SP, до вызова функции
+TMP2,   0
+TMP3,   0
+N4,     7774    / -4
+N1,     7777    / -1
+P3,     3       / 3
 *20
 REGS,
 *50
 STACK,
-*200
-        JMP main
 / Команды
-MQA = 7501
-MQL = 7421
-DVI = 7407
-*300
-/ Стандартная функция puts
-puts,   0
-        TAD SP1
-        TAD N3
-        DCA TMP2
-PTSL,   TAD I TMP2
-        SNA
-         JMP PTSEND
-        TSF
-         JMP .-1
-        TLS
-        JMP PTSL
-PTSEND, CLA CLL
-        JMP I puts
+MQA=     7501
+MQL=     7421
+DVI=     7407
+*400
 / Стандартная функция printf
-printf, 0
-        TAD SP1
-        TAD N3
+f01,    0
+        TAD SP2
+        TAD P6F
+        DCA TMP2
+        TAD I TMP2
+        TAD N1
         DCA TMP2        / Указатель на строку с форматом
-        TAD TMP2
-        DCA TMP1+1      / Указатель на аргументы для вставки
-PRTFL,  TAD I TMP2      / Цикл чтения, обработки и вывода символов
+        TAD SP2
+        TAD P10
+        DCA TMP1      / Указатель на аргументы для вставки
+PRTFL,  TAD I TMP2    / Цикл чтения из строки формата
         SNA
          JMP PRTFND
-        DCA TMP1
-        TAD TMP1
+        DCA TMP3
+        TAD TMP3
         TAD NPRCNT
-        SZA
-         JMP PRTFSD
-        JMP PRTFPC
-PRTFSD, CLA             / Стандартный вывод символа
-        TAD TMP1
+        SNA CLA
+         JMP PRTFPC
+PRTFSD, TAD TMP3        / Стандартный вывод символа
+        TAD NLFF        / Проверка на LF
+        SZA CLA
+         JMP NOTLFF
+        TAD PCRF        / Вывод CR перед LF
         TSF
          JMP .-1
         TLS
+        CLA CLL
+
+NOTLFF, TAD TMP3        / Выводится не LF
+        TSF
+         JMP .-1
+        TLS
+        CLA CLL
         JMP PRTFL
-PRTFPC, CLA             / Обработка %
-        TAD I TMP2
+PRTFPC, TAD I TMP2      / Обработка %
         TAD DTD
         SNA
          JMP PRTFD
         TAD DTPRCT
-        SNA
+        SNA CLA
          JMP PRTFPT
         JMP PRTFL
-PRTFD,  TAD TMP1+1      / Вывод числа (d)
-        TAD N3
-        DCA TMP1+1
-        TAD I TMP1+1
-        DCA TMP1
-        / Вывод минуса у отрицательного числа
+PRTFD,  TAD I TMP1      / Вывод числа (d)
+        DCA TMP3
         TAD TMP1
+        TAD P3
+        DCA TMP1
+        
+        / Вывод минуса у отрицательного числа
+        TAD TMP3
         SMA
          JMP PRTFPS
         CIA
-        DCA TMP1
+        DCA TMP3
         TAD PMINUS
         TSF
          JMP .-1
         TLS
 
-        / Вывод тысяч
-PRTFPS, CLA
-        TAD POST3       / Сохранение 1000 в делителе
-        DCA T3DVSR
-        TAD TMP1
-        MQL DVI         / Деление результата на 1000
-T3DVSR, 0000
-        DCA TMP1        / Сохранение остатка
+        / Вывод 3 цифр (единиц, десятков и сотен)
+PRTFPS, CLA CLL
+        TAD P1000       / Сохранение 1000
+        DCA DVSR        /    в делителе
+        TAD N3          / Сохранение счётчика
+        DCA NUMCNT
+        DCA NDSKP
+
+DLOOP,  TAD TMP3
+        MQL DVI         / Деление результата
+DVSR,   0000
+        DCA TMP3        / Сохранение остатка
         CLA MQA         / Получение частного
+        DCA NUMTMP
+
+        TAD NUMTMP
+        SZA CLA
+         JMP PRNT
+        TAD NDSKP
+        SZA CLA
+         JMP PRNT
+        JMP DLEND
+
+PRNT,   TAD NUMTMP
         TAD DIGGEN      / Создание кода символа частного
         TSF             / Вывод цифры в терминал
          JMP .-1
         TLS
         CLA
 
-        / Вывод сотен
-	TAD POST2       / Сохранение 100 в делителе
-        DCA T2DVSR
-        TAD TMP1
-        MQL DVI         / Деление результата на 100
-T2DVSR, 0000
-        DCA TMP1        / Сохранение остатка
-        CLA MQA         / Получение частного
-        TAD DIGGEN      / Создание кода символа частного
-        TSF             / Вывод цифры в терминал
-         JMP .-1
-        TLS
-        CLA
+DLEND,  ISZ NUMCNT
+         JMP .+2
+        JMP DLPEXT
 
-        / Вывод десятков
-	TAD POST1       / Сохранение 10 в делителе
-        DCA T1DVSR
-        TAD TMP1
-        MQL DVI         / Деление результата на 10
-T1DVSR, 0000
-        DCA TMP1        / Сохранение остатка
-        CLA MQA         / Получение частного
-        TAD DIGGEN      / Создание кода символа частного
-        TSF             / Вывод цифры в терминал
-         JMP .-1
-        TLS
-        CLA
+        / Деление делителя на 10
+        TAD DVSR
+        MQL DVI
+        0012            / 10
+        CLA MQA
+        DCA DVSR
+
+        JMP DLOOP
 
         / Вывод единиц
-        TAD TMP1
+DLPEXT, TAD TMP3
 	TAD DIGGEN
-	TSF             / Вывод цифры в терминал
-         JMP .-1
-        TLS
-
-        JMP PRTFL
-PRTFPT, CLA             / Вывод %
-        TAD PPRCNT
-        DCA TMP1
+        DCA TMP3
         JMP PRTFSD
-PRTFND, CLA CLL         / Выход из цикла
-        JMP I printf
-        / Константы для printf, чтобы не засорять ими нулевую страницу
+
+PRTFPT, TAD PPRCNT      / Вывод %
+        DCA TMP3
+        JMP PRTFSD
+PRTFND, TAD SP2         / Выход из цикла
+        DCA SP1
+        ISZ SP2
+        TAD I SP2
+        DCA SP2
+        JMP I f01
+
+NUMTMP, 0
+NDSKP,  0               / Если 0, пропускать цифру
+NUMCNT, 0
+PCRF,   0015            / CR
 PPRCNT, 0045            / '%'
 PMINUS, 0055            / '-'
 NPRCNT, 7733            / -'%'
+NLFF,   7766            / -LF
 DTD,    7634            / Определение 'd' 
 DTPRCT, 0077            / Определение '%' полсе 'd'
-POST3,	1750		/ 1000
-POST2,	0144		/ 100
-POST1,	0012		/ 10
+P6F,    6               / 6
+P10,	0012		/ 10
+P1000,	1750		/ 1000
 DIGGEN,	0060		/ Слагаемое для получения символа цифры
-*400
+
+*600
+
+/ Стандартная функция puts
+f00,    0
+        TAD SP2
+        TAD P6S
+        DCA TMP2
+        TAD I TMP2
+        TAD N1
+        DCA TMP2
+PTSL,   TSF
+         JMP .-1
+        TAD I TMP2
+        SNA
+         JMP PTSEND
+
+        / Проверка на LF
+        DCA TMP3
+        TAD TMP3
+        TAD NLFS
+        SZA CLA
+         JMP NOTLFS
+        TAD CRS         / Вывод CR перед LF
+        TSF
+         JMP .-1
+        TLS
+        CLA CLL
+
+NOTLFS, TAD TMP3
+        TLS
+        CLA
+        JMP PTSL
+PTSEND, TAD CRS
+        TLS
+        TSF
+         JMP .-1
+        TAD LFFTCR
+        TLS
+        CLA
+
+        TAD SP2
+        DCA SP1
+        ISZ SP2
+        TAD I SP2
+        DCA SP2
+
+        JMP I f00
+P6S,    6       / 6
+CRS,    0015
+LFFTCR, 7775
+NLFS,   7766            / -LF
+
 / Пролог функции
 PRLG,   0
+        / Save pointer to stack registers
         TAD SP2
-        TAD P3
-        DCA TMP2        / TMP2 - указатель на область стека c регистрами
-        TAD REGS
-        TAD N1
-        DCA TMP3        / TMP3 - указатель на регистры для чтения
-        TAD TMP3
-        DCA TMP4        / TMP4 - указатель на регистры для стирания
-        TAD I PRLG
-        DCA TMP1        / TMP1 - счётчик
-PRLGL,  TAD I TMP3
+        IAC
+        DCA TMP2
+        TAD SP1
         DCA I TMP2
-        DCA I TMP4
+        / Save counter
+        TAD I PRLG
+        SNA
+         JMP SKPPRG     / Skip if nothing to save
+        DCA TMP1        / TMP1 - counter
+        / Save pointer to registers for read
+        TAD REGSP
+        DCA TMP2        / TMP2 - pointer to registers for read
+        / Registers save loop
+PRLGC,  TAD I TMP2      / Read register
+        DCA I SP1       / Save register to stack
         ISZ TMP1
-         JMP PRLGL
-        TAD SP2
-        TAD N1
-        DCA SP2
-        ISZ PRLG
-        JMP I PRLG
+         JMP PRLGC
+        / Exit loop
+SKPPRG, ISZ PRLG        / Skip arg
+        JMP I PRLG      / jump back to function
+
 / Эпилог функции
 EPLG,   0
-        TAD SP2
-        TAD P3
-        DCA TMP2        / TMP2 - указатель на область стека c регистрами
-        TAD REGS
-        TAD N1
-        DCA TMP3        / TMP3 - указатель на регистры для записи
+        / Save counter
         TAD I EPLG
-        DCA TMP1        / TMP1 - счётчик
-EPLGL,  TAD I TMP2
-        DCA I TMP3
+        SNA
+         JMP SKPPLG     / Skip if nothing to restore
+        DCA TMP1        / TMP1 - counter
+        / Save pointer to stack registers
+        TAD SP2
+        IAC
+        DCA TMP2
+        TAD I TMP2
+        DCA TMP2        / TMP2 - pointer to registers for read
+        / Save pointer to registers for restore
+        TAD REGSP
+        DCA TMP3        / TMP2 - pointer to registers for restore
+        / Restore loop
+EPLGC,  TAD I TMP2      / Read stack register
+        DCA I TMP3      / Save register
         ISZ TMP1
-         JMP EPLGL
-        JMP I SP2
+         JMP EPLGC
+        / Exit loop
+SKPPLG, / Restore SP1
+        TAD SP2
+        TAD N1
+        DCA SP1
+        / Restore SP2
+        TAD I SP2
+        DCA SP2
+        / return from function
+        TAD SP1
+        DCA TMP2
+        TAD I TMP2
+        DCA TMP1
+        JMP I TMP1
+REGSP,  REGS-1

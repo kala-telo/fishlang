@@ -5,43 +5,11 @@
 #include "../da.h"
 
 #define STDFN_COUNT 2
-
-/*
-typedef struct {
-    struct {
-        String *data;
-        size_t len, capacity;
-    } symbols;
-
-    struct {
-        typedef struct {
-            size_t name;
-            typedef struct {
-                typedef struct {
-                    uint32_t result;
-                    TACOp function;
-                    uint32_t x, y;
-                } TAC32 *data;
-                size_t len, capacity;
-            } TAC32Arr code;
-            uint16_t temps_count;
-        } StaticFunction *data;
-        size_t len, capacity;
-    } functions;
-
-    struct {
-        typedef struct {
-            size_t name;
-            String data;
-        } StaticVariable *data;
-        size_t len, capacity;
-    } data;
-} IR;
-*/
+#define push_cmd(...) commands.strp += snprintf(commands.strp, sizeof(commands.str), __VA_ARGS__) // Добавление команды ассемблера в буфер команд
 
 typedef struct {
     short size;
-    uint32_t data;
+    uint64_t data;
 } PDP8Const;
 
 typedef struct {
@@ -50,24 +18,81 @@ typedef struct {
 } PDP8ConstArr;
 
 typedef struct {
-    size_t *data;
-    size_t len, capacity;
-} PDP8Stack;
+    String name;        // Имя функции
+    short nuses;        // Количество использований функции, нужно для разбиения программы на страницы
+    bool current_page;  // Находится ли функция на текущей странице
+    bool link_on_page;  // Есть ли на текущей странице ссылка на эту функцию
+} PDP8Function;
 
 typedef struct {
-    String name;
-    bool used;
-} PDP8StdFn;
+    PDP8Function *data;
+    size_t len, capacity;
+} PDP8FunctionArr;
+
+typedef struct {
+    size_t name;        // Номер в таблице символов
+    short nuses;        // Количество использований данных, нужно для разбиения программы на страницы
+    bool link_on_page;  // Есть ли на текущей странице ссылка на эти данные
+} PDP8Data;
+
+typedef struct {
+    PDP8Data *data;
+    size_t len, capacity;
+} PDP8DataArr;
+
+typedef struct {
+    size_t name;
+    short nuses;
+    bool current_page;
+    bool link_on_page;
+} PDP8Label;
+
+typedef struct {
+    PDP8Label *data;
+    size_t len, capacity;
+} PDP8LabelArr;
+
+typedef struct {
+    char str[15*30];
+    char *strp;
+    bool crt_const;
+    bool crt_function;
+    bool crt_data;
+    bool crt_label;
+    union {
+        uint32_t const_number;
+        struct {
+            String name;
+            bool call;
+        } function;
+        size_t data_name;
+        struct {
+            size_t name;
+            bool define;
+        } label;
+    } data;
+} PDP8CommandsBuffer;
+
+// Замена всех строк find в строке src на rplc
+static void replace(char *src, char *find, char *rplc) {
+    char *p = NULL;
+    while ((p = strstr(src, find)) != NULL) {
+        memcpy(p, rplc, strlen(rplc));
+    }
+}
+
+// Высчитать размер константы в 12-битных словах
+static short get_const_size(uint32_t number) {
+    if (number < 1<<12)
+        return 1;
+    else if (number < 1<<12)
+        return 2;
+    else
+        return 3;
+}
 
 static size_t create_const(Arena *arena, PDP8ConstArr *consts, uint32_t number, short *const_size) {
-    *const_size = 0; // Размер константы в 12-битных словах
-    
-    if (number < 1<<12 || -number < 1<<12)
-        *const_size = 1;
-    else if (number < 1<<12 || -number < 1<<24)
-        *const_size = 2;
-    else
-        *const_size = 3;
+    *const_size = get_const_size(number); // Размер константы в 12-битных словах
     
     size_t const_idx;
     bool find = false;
@@ -86,52 +111,281 @@ static size_t create_const(Arena *arena, PDP8ConstArr *consts, uint32_t number, 
     return const_idx;
 }
 
-static void pdp8_prepare_for_call(FILE* output, TAC32Arr func, PDP8Stack stack, IR ir, Arena *arena, PDP8ConstArr *consts) {
-    short const_size;
-    size_t const_idx;
-    
-    for (size_t i = stack.len; i-- > 0;) {
-        TAC32 inst = func.data[stack.data[i]];
-        uint32_t x = inst.x - 1;
-
-        switch (inst.function) {
-        case TAC_CALL_PUSH:
-            fprintf(output, "\tTAD REGS+%o\n", x*3);
-            fprintf(output, "\tDCA I SP1\n");
-            fprintf(output, "\tTAD REGS+%o\n", x*3 + 1);
-            fprintf(output, "\tDCA I SP1\n");
-            fprintf(output, "\tTAD REGS+%o\n", x*3 + 2);
-            fprintf(output, "\tDCA I SP1\n");
-            break;
-        case TAC_CALL_PUSH_INT:
-            const_idx = create_const(arena, consts, inst.x, &const_size);
-
-            for (short k = 0; k < 3; k++) {
-                if (k < const_size)
-                    fprintf(output, "\tTAD i%zu\n", const_idx + k);
-                fprintf(output, "\tDCA I SP1\n");
-            }
-            break;
-        case TAC_CALL_PUSH_SYM:
-            /*fprintf(output, "\tTAD d%zu", inst.x);
-            if (ir.symbols.data[inst.x].string != NULL)
-                fprintf(output, " / %.*s", PS(ir.symbols.data[inst.x]));
-            fputc('\n', output);*/
-            if (ir.symbols.data[inst.x].string != NULL)
-                fprintf(output, "\tTAD %.*s\n", PS(ir.symbols.data[inst.x]));
-            else
-                fprintf(output, "\tTAD d%u\n", inst.x);
-            fprintf(output, "\tDCA I SP1\n");
-            fprintf(output, "\tDCA I SP1\n");
-            fprintf(output, "\tDCA I SP1\n");
-            break;
-        default:
-            fprintf(stderr, "Function: %d\n", inst.function);
-            UNREACHABLE();
+static bool lookup_function(PDP8FunctionArr *functions, String name, size_t *fn_idx_result) {
+    for (size_t fn_idx = 0; fn_idx < functions->len; fn_idx++) {
+        if (string_eq(functions->data[fn_idx].name, name)){
+            *fn_idx_result = fn_idx;
+            return true;
         }
-
-        fputc('\n', output);
     }
+    return false;
+}
+
+static bool lookup_label(PDP8LabelArr *labels, uint32_t name, size_t *lb_idx_result) {
+    for (size_t label_idx = 0; label_idx < labels->len; label_idx++) {
+        PDP8Label *lb = &(labels->data[label_idx]);
+        if (lb->name == name) {
+            *lb_idx_result = label_idx;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool lookup_data(PDP8DataArr *data, uint32_t name, size_t *dt_idx_result) {
+    for (size_t data_idx = 0; data_idx < data->len; data_idx++) {
+        PDP8Data *dt = &(data->data[data_idx]);
+        if (dt->name == name){
+            *dt_idx_result = data_idx;
+            return true;
+        }
+    }
+    return false;
+}
+
+static size_t create_function(Arena *arena, PDP8FunctionArr *functions, String name, bool call) {
+    size_t fn_idx;
+    bool find = lookup_function(functions, name, &fn_idx);
+
+    if (find) {
+        PDP8Function *fn = &(functions->data[fn_idx]);
+        if ((!fn->current_page || !call) && !fn->link_on_page) {
+            fn->nuses++;
+            fn->link_on_page = true;
+        }
+    } else {
+        PDP8Function f = {.name = name, .nuses = 0, .current_page = true, .link_on_page = !call};
+        da_append(arena, *functions, f);
+        fn_idx = functions->len-1;
+    }
+
+    return fn_idx;
+}
+
+static size_t create_data(Arena *arena, PDP8DataArr *data_arr, size_t name) {
+    size_t data_idx;
+
+    bool find = lookup_data(data_arr, name, &data_idx);
+
+    if (find) {
+        PDP8Data *dt = &(data_arr->data[data_idx]);
+        if (!dt->link_on_page) {
+            dt->nuses++;
+            dt->link_on_page = true;
+        }
+    } else {
+        PDP8Data d = {.name = name, .nuses = 0, .link_on_page = true};
+        da_append(arena, *data_arr, d);
+        data_idx = data_arr->len-1;
+    }
+
+    return data_idx;
+}
+
+static size_t create_label(Arena *arena, PDP8LabelArr *label_arr, size_t name, bool define) {
+    size_t label_idx;
+
+    bool find = lookup_label(label_arr, name, &label_idx);
+
+    if (find) {
+        PDP8Label *lb = &(label_arr->data[label_idx]);
+        if (define) {
+            lb->current_page = true;
+        }
+        if (!lb->current_page && !lb->link_on_page) {
+            lb->nuses++;
+            lb->link_on_page = true;
+        }
+    } else {
+        PDP8Label l = {.name = name, .nuses = 0, .current_page = define, .link_on_page = !define};
+        da_append(arena, *label_arr, l);
+        label_idx = label_arr->len-1;
+    }
+
+    return label_idx;
+}
+
+// Добавление в конец страницы памяти ссылок на функции, данные и метки, константы
+static void add_page_end(FILE *output, PDP8FunctionArr *functions, PDP8ConstArr *consts, PDP8DataArr *data, PDP8LabelArr *labels,
+                         short page_num) {
+    // Добавление ссылок на функции
+    for (size_t i = 0; i < functions->len; i++) {
+        PDP8Function *fn = &(functions->data[i]);
+        if (fn->link_on_page)
+            fprintf(output, "f%02zul%02x,\tf%02zu\n", i, fn->nuses, i);
+        fn->link_on_page = false;
+        fn->current_page = false;
+    }
+
+    // Добавление ссылок на данные
+    for (size_t i = 0; i < data->len; i++) {
+        PDP8Data *dt = &(data->data[i]);
+        if (dt->link_on_page)
+            fprintf(output, "d%02zul%02x,\td%02zu\n", i, dt->nuses, i);
+        dt->link_on_page = false;
+    }
+
+    // Добавление констант
+    for (size_t i = 0; i < consts->len; i++) {
+        PDP8Const c = consts->data[i];
+        fprintf(output, "i%02zup%02x,", i, page_num);
+        if (c.data >> 31 & 1) {             // Если число отрицательное
+            c.data |= (uint64_t)0xF << 32;  // добавить ему в конец 4 бита, то есть дополнить до 36 бит
+        }
+        for (short j = 0; j < c.size; j++) {
+            fprintf(output, "\t%o\n", (short)(c.data >> (j * 12)) & 07777);
+        }
+    }
+    consts->len = 0;
+
+    // Добавление ссылок на метки
+    for (size_t i = 0; i < labels->len; i++) {
+        PDP8Label *lb = &(labels->data[i]);
+        if (lb->link_on_page)
+            fprintf(output, "l%02zul%02x,\tl%02zu\n", i, lb->nuses, i);
+        lb->link_on_page = false;
+        lb->current_page = false;
+    }
+}
+
+// Добавление команд из буфера commands в файл output
+static void add_commands(FILE *output, PDP8CommandsBuffer *commands, Arena *arena,
+                         PDP8FunctionArr *functions, PDP8ConstArr *consts, PDP8DataArr *data, PDP8LabelArr *labels,
+                         short *page_num, short *command_num) {
+    short commands_count = 0; // Количество команд в буфере
+    for (char *commandspt = commands->str; *commandspt != '\0'; commandspt++) {
+        if (*commandspt == '\n')
+            commands_count++;
+    }
+
+    short data_size = 0;
+
+    for (size_t i = 0; i < functions->len; i++) {
+        if (functions->data[i].link_on_page)
+            data_size++;
+    }
+
+    for (size_t i = 0; i < consts->len; i++) {
+        data_size += consts->data[i].size;
+    }
+
+    for (size_t i = 0; i < data->len; i++) {
+        if (data->data[i].link_on_page)
+            data_size++;
+    }
+
+    for (size_t i = 0; i < labels->len; i++) {
+        if (labels->data[i].link_on_page)
+            data_size++;
+    }
+
+    if (commands->crt_const) {
+        data_size += get_const_size(commands->data.const_number);
+    }
+    if (commands->crt_data) {
+        size_t dt_idx;
+        if (lookup_data(data, commands->data.data_name, &dt_idx))
+            data_size += !data->data[dt_idx].link_on_page;
+        else
+            data_size++;
+    }
+    if (commands->crt_function) {
+        size_t fn_idx;
+        bool find = lookup_function(functions, commands->data.function.name, &fn_idx);
+        if (find) {
+            if (commands->data.function.call)
+                data_size += !functions->data[fn_idx].link_on_page && !functions->data[fn_idx].current_page;
+            else
+                data_size += !functions->data[fn_idx].link_on_page;
+        } else {
+            data_size += 1;
+        }
+    }
+    if (commands->crt_label) {
+        size_t lb_idx;
+        bool find = lookup_label(labels, commands->data.label.name, &lb_idx);
+        if (!find && !commands->data.label.define) {
+            data_size++;
+        } else if (find) {
+            data_size += !labels->data[lb_idx].link_on_page && !labels->data[lb_idx].current_page;
+        }
+    }
+
+    if (*command_num + commands_count + 2 + data_size >= 0200) {
+        (*page_num)++;
+        fprintf(output, "\tJMP I pl%d\n", *page_num);
+        fprintf(output, "pl%d,\t%o\n", *page_num, *page_num * 0200);
+        add_page_end(output, functions, consts, data, labels, *page_num-1);
+        fprintf(output, "*%o\n", *page_num * 0200);
+        *command_num = 0;
+    }
+    *command_num += commands_count;
+
+    if (commands->crt_const) {
+        char replace_str[7];
+        short const_size;
+        size_t const_idx = create_const(arena, consts, commands->data.const_number, &const_size);
+        snprintf(replace_str, sizeof(replace_str), "i%.2zxp%.2x", const_idx & 0xFF, *page_num & 0xFF);
+        replace(commands->str, "#cnst#", replace_str);
+
+        commands->crt_const = false;
+    }
+
+    if (commands->crt_data) {
+        char replace_str[7];
+        size_t data_idx = create_data(arena, data, commands->data.data_name);
+        snprintf(replace_str, sizeof(replace_str), "d%.2zxl%.2x", data_idx & 0xFF, data->data[data_idx].nuses & 0xFF);
+        replace(commands->str, "#data#", replace_str);
+
+        commands->crt_data = false;
+    }
+
+    if (commands->crt_function) {
+        char replace_str[9];
+        size_t fn_idx = create_function(arena, functions, commands->data.function.name, commands->data.function.call);
+        PDP8Function *fn = &(functions->data[fn_idx]);
+        if (fn->current_page && commands->data.function.call) {
+            snprintf(replace_str, sizeof(replace_str), "f%.2zx     ", fn_idx & 0xFF);
+        } else {
+            snprintf(replace_str, sizeof(replace_str), "%c f%.2zxl%.2x", (commands->data.function.call) ? 'I' : ' ', fn_idx & 0xFF, fn->nuses & 0xFF);
+        }
+        replace(commands->str, "#functn#", replace_str);
+
+        commands->crt_function = false;
+    }
+
+    if (commands->crt_label) {
+        char replace_str[9];
+        size_t lb_idx = create_label(arena, labels, commands->data.label.name, commands->data.label.define);
+        PDP8Label *lb = &(labels->data[lb_idx]);
+        if (lb->current_page || commands->data.label.define) {
+            snprintf(replace_str, sizeof(replace_str), "     l%.2zx", lb_idx & 0xFF);
+        } else {
+            snprintf(replace_str, sizeof(replace_str), "I l%.2zxl%.2x", lb_idx & 0xFF, lb->nuses & 0xFF);
+        }
+        replace(commands->str, "#labell#", replace_str);
+
+        commands->crt_label = false;
+    }
+
+    fprintf(output, "%s", commands->str);
+    fputc('\n', output);
+
+    *commands->str = '\0';
+    commands->strp = commands->str;
+}
+
+static void add_store_sp2(PDP8CommandsBuffer commands) {
+    push_cmd("\tTAD SP1\n");
+    push_cmd("\tTAD P2\n");
+    push_cmd("\tDCA TMP1\n");
+    push_cmd("\tTAD SP2\n");
+    push_cmd("\tDCA I TMP1\n");
+    push_cmd("\tTAD SP1\n");
+    push_cmd("\tDCA SP2\n");
+    push_cmd("\tTAD TMP1\n");
+    push_cmd("\tTAD P4\n");
+    push_cmd("\tDCA SP1\n");
 }
 
 void codegen_pdp8(IR ir, FILE *output) {
@@ -147,281 +401,371 @@ void codegen_pdp8(IR ir, FILE *output) {
 
     Arena arena = {0};
     PDP8ConstArr consts = {0};
+    PDP8DataArr data = {0};
+    PDP8LabelArr labels = {0};
     String std_functions[STDFN_COUNT] = {
-        S("puts"),
-        S("printf"),
+        [0] = S("puts"),
+        [1] = S("printf"),
     };
+    PDP8FunctionArr functions = {0};
+    for (int i = 0; i < STDFN_COUNT; i++) {
+        PDP8Function f = {.name = std_functions[i], .nuses = 0, .current_page = false, .link_on_page = false};
+        da_append(&arena, functions, f);
+    }
+
+    short page_num = 3;         // Номер страницы памтяи
+    short command_num = 0131;    // Номер команды на странице памяти
 
     for (size_t i = 0; i < ir.functions.len; i++) {
-        PDP8Stack stack = {0};
-
         StaticFunction func = ir.functions.data[i];
         uint16_t temps_count = func.temps_count;
-        
-        /*fprintf(output, "/ %.*s\n", PS(ir.symbols.data[func.name]));
-        fprintf(output, "d%zu,\t0\n", func.name);*/
-        fprintf(output, "%.*s,\t0\n", PS(ir.symbols.data[func.name]));
-        if (string_eq(ir.symbols.data[func.name], S("main")))
-            fprintf(output, "\tDCA 200\n");
-        fprintf(output, "\tTAD .-1\n");
-        fprintf(output, "\tDCA I SP2\n");
-        if (temps_count > 0) {
-            fprintf(output, "\tJMS PRLG\n");
-            fprintf(output, "\t%o\n", -temps_count & 07777);
-        }
-        fprintf(output, "\n");
 
-        bool store_sp2 = true; // Первое сохраниние аргумента в стек, надо скопировать старый SP
+        PDP8CommandsBuffer commands = {0};
+        commands.strp = commands.str;
+
+        bool sp2_stored = false;
+
+        bool is_main = string_eq(ir.symbols.data[func.name], S("main"));
+
+        size_t fn_idx = create_function(&arena, &functions, ir.symbols.data[func.name], false);
+        functions.data[fn_idx].current_page = true;
+
+        push_cmd("f%.2zx,\t0\n", fn_idx);
+        push_cmd("\tTAD .-1\n");
+        if (is_main) {
+            push_cmd("\tSNA\n");
+            push_cmd("\t JMP MAINSP\n");
+        }
+        push_cmd("\tDCA I SP2\n");
+        push_cmd("\tJMS I PRLGP\n");
+        push_cmd("\t%o\n", -temps_count * 3 & 07777);
+        if (is_main)
+            push_cmd("MAINSP,");
+
+        fprintf(output, "/ %.*s\n", PS(ir.symbols.data[func.name]));
+        add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
+
         for (size_t j = 0; j < func.code.len; j++) {
             TAC32 inst = func.code.data[j];
             uint32_t r = inst.result-1, x = inst.x-1, y = inst.y-1;
 
             short const_size;
-            size_t const_idx;
-            bool is_std;
 
             switch (inst.function) {
             case TAC_CALL_REG:
-                pdp8_prepare_for_call(output, func.code, stack, ir, &arena, &consts);
-                fprintf(output, "\tJMS I REGS+%o\n", x*3);
-                if (inst.result) {
-                    fprintf(output, "\tISZ SP2\n");
-                    fprintf(output, "\tTAD I SP2\n");
-                    fprintf(output, "\tDCA REGS+%o\n", r*3);
-                    fprintf(output, "\tTAD I SP2\n");
-                    fprintf(output, "\tDCA REGS+%o\n", r*3 + 1);
-                    fprintf(output, "\tTAD I SP2\n");
-                    fprintf(output, "\tDCA REGS+%o\n", r*3 + 2);
-                    fprintf(output, "\tTAD SP2\n");
-                    fprintf(output, "\tTAD N3\n");
-                    fprintf(output, "\tDCA SP1\n");
-                } else {
-                    fprintf(output, "\tTAD SP2\n");
-                    fprintf(output, "\tDCA SP1\n");
+                if (!sp2_stored) {
+                    add_store_sp2(commands);
+                    add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
                 }
-                store_sp2 = true;
-                stack.len = 0;
+
+                push_cmd("\tJMS I REGS+%o\n", x*3);
+                if (inst.result) {
+                    push_cmd("\tTAD SP1\n");
+                    push_cmd("\tTAD P3\n");
+                    push_cmd("\tDCA TMP2\n");
+                    push_cmd("\tTAD I TMP2\n");
+                    push_cmd("\tDCA REGS+%o\n", r*3);
+                    push_cmd("\tTAD I TMP2\n");
+                    push_cmd("\tDCA REGS+%o\n", r*3 + 1);
+                    push_cmd("\tTAD I TMP2\n");
+                    push_cmd("\tDCA REGS+%o\n", r*3 + 2);
+                }
+
+                sp2_stored = false;
                 break;
             case TAC_CALL_SYM:
-                pdp8_prepare_for_call(output, func.code, stack, ir, &arena, &consts);
-                /*fprintf(output, "\tJMS I d%zu", inst.x);
-                if (ir.symbols.data[inst.x].string != NULL)
-                    fprintf(output, " / %.*s()", PS(ir.symbols.data[inst.x]));
-                fputc('\n', output);*/
-                fprintf(output, "\tJMS I %.*s\n", PS(ir.symbols.data[inst.x]));
-
-                is_std = false;
-                for (int i = 0; i < STDFN_COUNT; i++) {
-                    if (string_eq(std_functions[i], ir.symbols.data[inst.x])) {
-                        is_std = true;
-                        break;
-                    }
+                if (!sp2_stored) {
+                    add_store_sp2(commands);
+                    add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
                 }
 
-                if (inst.result && !is_std) {
-                    fprintf(output, "\tISZ SP2\n");
-                    fprintf(output, "\tTAD I SP2\n");
-                    fprintf(output, "\tDCA REGS+%o\n", r*3);
-                    fprintf(output, "\tTAD I SP2\n");
-                    fprintf(output, "\tDCA REGS+%o\n", r*3 + 1);
-                    fprintf(output, "\tTAD I SP2\n");
-                    fprintf(output, "\tDCA REGS+%o\n", r*3 + 2);
-                    fprintf(output, "\tTAD SP2\n");
-                    fprintf(output, "\tTAD N3\n");
-                    fprintf(output, "\tDCA SP1\n");
-                } else {
-                    fprintf(output, "\tTAD SP2\n");
-                    fprintf(output, "\tDCA SP1\n");
+                push_cmd("\tJMS #functn# / %.*s\n", PS(ir.symbols.data[inst.x]));
+                commands.crt_function = true;
+                commands.data.function.name = ir.symbols.data[inst.x];
+                commands.data.function.call = true;
+
+                if (inst.result) {
+                    push_cmd("\tTAD SP1\n");
+                    push_cmd("\tTAD P3\n");
+                    push_cmd("\tDCA TMP2\n");
+                    push_cmd("\tTAD I TMP2\n");
+                    push_cmd("\tDCA REGS+%o\n", r*3);
+                    push_cmd("\tTAD I TMP2\n");
+                    push_cmd("\tDCA REGS+%o\n", r*3 + 1);
+                    push_cmd("\tTAD I TMP2\n");
+                    push_cmd("\tDCA REGS+%o\n", r*3 + 2);
                 }
                 
-                store_sp2 = true;
-                stack.len = 0;
+                sp2_stored = false;
                 break;
             case TAC_CALL_PUSH:
-            case TAC_CALL_PUSH_INT:
-            case TAC_CALL_PUSH_SYM:
-                if (store_sp2) {
-                    const_idx = create_const(&arena, &consts, temps_count*3 + 3, &const_size);
-                    fprintf(output, "\tTAD SP1\n");
-                    fprintf(output, "\tDCA SP2\n");
-                    fprintf(output, "\tTAD SP1\n");
-                    fprintf(output, "\tTAD i%zu\n", const_idx);
-                    fprintf(output, "\tDCA SP1\n");
-                    store_sp2 = false;
+                if (!sp2_stored) {
+                    add_store_sp2(commands);
+                    add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
+                    sp2_stored = true;
                 }
-                da_append(&arena, stack, j);
+
+                push_cmd("\tTAD REGS+%o\n", x*3);
+                push_cmd("\tDCA I SP1\n");
+                push_cmd("\tTAD REGS+%o\n", x*3 + 1);
+                push_cmd("\tDCA I SP1\n");
+                push_cmd("\tTAD REGS+%o\n", x*3 + 2);
+                push_cmd("\tDCA I SP1\n");
                 break;
-            case TAC_LOAD_INT:
-                const_idx = create_const(&arena, &consts, inst.x, &const_size);
+            case TAC_CALL_PUSH_INT:
+                if (!sp2_stored) {
+                    add_store_sp2(commands);
+                    add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
+                    sp2_stored = true;
+                }
+
+                const_size = get_const_size(inst.x);
+                commands.crt_const = true;
+                commands.data.const_number = inst.x;
 
                 for (short k = 0; k < 3; k++) {
                     if (k < const_size)
-                        fprintf(output, "\tTAD i%zu\n", const_idx + k);
-                    fprintf(output, "\tDCA REGS+%o\n", r*3 + k);
+                        push_cmd("\tTAD #cnst#+%d\n", k);
+                    push_cmd("\tDCA I SP1\n");
+                }
+                break;
+            case TAC_CALL_PUSH_SYM:
+                if (!sp2_stored) {
+                    add_store_sp2(commands);
+                    add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
+                    sp2_stored = true;
+                }
+
+                if (ir.symbols.data[inst.x].string != NULL) {
+                    push_cmd("\tTAD #functn# / %.*s\n", PS(ir.symbols.data[inst.x]));
+                    commands.crt_function = true;
+                    commands.data.function.name = ir.symbols.data[inst.x];
+                    commands.data.function.call = false;
+                } else {
+                    push_cmd("\tTAD #data#\n");
+                    commands.crt_data = true;
+                    commands.data.data_name = inst.x;
+                }
+                push_cmd("\tDCA I SP1\n");
+                push_cmd("\tDCA I SP1\n");
+                push_cmd("\tDCA I SP1\n");
+                break;
+            case TAC_LOAD_INT:
+                const_size = get_const_size(inst.x);
+                commands.crt_const = true;
+                commands.data.const_number = inst.x;
+
+                for (short k = 0; k < 3; k++) {
+                    if (k < const_size)
+                        push_cmd("\tTAD #cnst#+%d\n", k);
+                    push_cmd("\tDCA REGS+%o\n", r*3 + k);
                 }
                 break;
             case TAC_LOAD_ARG:
-                const_idx = create_const(&arena, &consts, ((inst.x+1) * 3) & 07777, &const_size);
-                fprintf(output, "\tTAD i%zu\n", const_idx);
-                fprintf(output, "\tCIA\n");
-                fprintf(output, "\tTAD SP1\n");
-                fprintf(output, "\tDCA SP1\n");
+                commands.crt_const = true;
+                commands.data.const_number = (5 + inst.x * 3) & 07777;
+                
+                push_cmd("\tTAD SP2\n");
+                push_cmd("\tTAD #cnst#\n");
+                push_cmd("\tDCA TMP2\n");
                 for (short k = 0; k < 3; k++) {
-                    fprintf(output, "\tTAD I SP1\n");
-                    fprintf(output, "\tDCA REGS+%o\n", r*3 + k);
+                    push_cmd("\tTAD I TMP2\n");
+                    push_cmd("\tDCA REGS+%o\n", r*3 + k);
                 }
-                fprintf(output, "\tTAD i%zu\n", const_idx);
-                fprintf(output, "\tTAD N3\n");
-                fprintf(output, "\tTAD SP1\n");
-                fprintf(output, "\tDCA SP1\n");
                 break;
             case TAC_LOAD_SYM:
-                /*fprintf(output, "\tTAD d%zu", inst.x);
-                if (ir.symbols.data[inst.x].string != NULL)
-                    fprintf(output, " / %.*s", PS(ir.symbols.data[inst.x]));
-                fputc('\n', output);*/
-                if (ir.symbols.data[inst.x].string != NULL)
-                    fprintf(output, "\tTAD %.*s\n", PS(ir.symbols.data[inst.x]));
-                else
-                    fprintf(output, "\tTAD d%u\n", inst.x);
-                fprintf(output, "\tDCA REGS+%o\n", r*3);
-                fprintf(output, "\tDCA REGS+%o\n", r*3 + 1);
-                fprintf(output, "\tDCA REGS+%o\n", r*3 + 2);
+                if (ir.symbols.data[inst.x].string != NULL) {
+                    push_cmd("\tJMS #functn# / %.*s\n", PS(ir.symbols.data[inst.x]));
+                    commands.crt_function = true;
+                    commands.data.function.name = ir.symbols.data[inst.x];
+                    commands.data.function.call = false;
+                } else {
+                    push_cmd("\tTAD #data#\n");
+                    commands.crt_data = true;
+                    commands.data.data_name = inst.x;
+                }
+                push_cmd("\tDCA REGS+%o\n", r*3);
+                push_cmd("\tDCA REGS+%o\n", r*3 + 1);
+                push_cmd("\tDCA REGS+%o\n", r*3 + 2);
                 break;
             case TAC_MOV:
                 for (short k = 0; k < 3; k++) {
-                    fprintf(output, "\tTAD REGS+%o\n", x*3 + k);
-                    fprintf(output, "\tDCA REGS+%o\n", r*3 + k);
+                    push_cmd("\tTAD REGS+%o\n", x*3 + k);
+                    push_cmd("\tDCA REGS+%o\n", r*3 + k);
                 }
                 break;
             case TAC_ADD:
+                push_cmd("\tCLA CLL\n");
                 for (short k = 0; k < 3; k++) {
-                    fprintf(output, "\tTAD REGS+%o\n", x*3 + k);
-                    fprintf(output, "\tTAD REGS+%o\n", y*3 + k);
-                    fprintf(output, "\tDCA REGS+%o\n", r*3 + k);
+                    push_cmd("\tTAD REGS+%o\n", x*3 + k);
+                    push_cmd("\tTAD REGS+%o\n", y*3 + k);
+                    push_cmd("\tDCA REGS+%o\n", r*3 + k);
                     if (k < 2)
-                        fprintf(output, "\tRAL\n");
+                        push_cmd("\tRAL\n");
                 }
-                fprintf(output, "\tCLL\n");
+                push_cmd("\tCLL\n");
                 break;
             
             case TAC_SUB:
+                push_cmd("\tCLA CLL\n");
                 for (short k = 0; k < 3; k++) {
-                    fprintf(output, "\tTAD REGS+%o\n", y*3 + k);
-                    fprintf(output, "\tCIA\n");
-                    fprintf(output, "\tTAD REGS+%o\n", x*3 + k);
-                    fprintf(output, "\tDCA REGS+%o\n", r*3 + k);
+                    push_cmd("\tTAD REGS+%o\n", y*3 + k);
+                    push_cmd("\tCIA\n");
+                    push_cmd("\tTAD REGS+%o\n", x*3 + k);
+                    push_cmd("\tDCA REGS+%o\n", r*3 + k);
                     if (k < 2)
-                        fprintf(output, "\tRAL\n");
+                        push_cmd("\tRAL\n");
                 }
-                fprintf(output, "\tCLL\n");
+                push_cmd("\tCLL\n");
                 break;
             case TAC_ADDI:
             case TAC_SUBI:
-                const_idx = create_const(&arena, &consts, 
-                                         inst.y * (inst.function == TAC_ADDI ? 1 : -1),
-                                         &const_size);
+                commands.crt_const = true;
+                commands.data.const_number = inst.y * (inst.function == TAC_ADDI ? 1 : -1);
+                const_size = get_const_size(inst.y);
+
+                push_cmd("\tCLA CLL\n");
                 for (short k = 0; k < 3; k++) {
-                    fprintf(output, "\tTAD REGS+%o\n", x*3 + k);
+                    push_cmd("\tTAD REGS+%o\n", x*3 + k);
                     if (k < const_size)
-                        fprintf(output, "\tTAD i%zu\n", const_idx + k);
-                    fprintf(output, "\tDCA I REGS+%o\n", r*3 + k);
+                        push_cmd("\tTAD #cnst#+%d\n", k);
+                    push_cmd("\tDCA REGS+%o\n", r*3 + k);
                 }
                 break;
             case TAC_LT:
                 for (short k = 0; k < 3; k++) {
-                    fprintf(output, "\tTAD REGS+%o\n", x*3 + k);
-                    fprintf(output, "\tCIA\n");
-                    fprintf(output, "\tTAD REGS+%o\n", y*3 + k);
-                    if (k < 2)
-                        fprintf(output, "\tCLA RAL\n");
+                    push_cmd("\tTAD REGS+%o\n", y*3 + k);
+                    if (k == 0) {
+                        push_cmd("\tCIA\n");
+                        push_cmd("\tCLL\n");
+                    } else {
+                        push_cmd("\tCMA\n");
+                        push_cmd("\tTAD TMP1\n");
+                    }
+                    push_cmd("\tTAD REGS+%o\n", x*3 + k);
+                    if (k < 2) {
+                        push_cmd("\tCLA RAL\n");
+                        push_cmd("\tDCA TMP1\n");
+                    }
                 }
-                fprintf(output, "\tDCA TMP1\n");
-                fprintf(output, "\tDCA REGS+%o\n", r*3);
-                fprintf(output, "\tDCA REGS+%o\n", r*3 + 1);
-                fprintf(output, "\tDCA REGS+%o\n", r*3 + 2);
-                fprintf(output, "\tTAD TMP1\n");
-                fprintf(output, "\tSPA SZL\n");
-                fprintf(output, "\t ISZ REGS+%o\n", r*3);
-                fprintf(output, "\tCLA CLL\n");
+                push_cmd("\tDCA TMP1\n");
+                push_cmd("\tDCA REGS+%o\n", r*3);
+                push_cmd("\tDCA REGS+%o\n", r*3 + 1);
+                push_cmd("\tDCA REGS+%o\n", r*3 + 2);
+                push_cmd("\tTAD TMP1\n");
+                push_cmd("\tSNL\n");
+                push_cmd("\t ISZ REGS+%o\n", r*3);
+                push_cmd("\tCLA CLL\n");
+                break;
+            case TAC_LTI:
+                commands.crt_const = true;
+                commands.data.const_number = -inst.y;
+                
+                push_cmd("\tCLA CLL\n");
+                for (short k = 0; k < 3; k++) {
+                    push_cmd("\tTAD REGS+%o\n", x*3 + k);
+                    push_cmd("\tTAD #cnst#+%d\n", k);
+                    if (k < 2)
+                        push_cmd("\tCLA RAL\n");
+                }
+                push_cmd("\tDCA TMP1\n");
+                push_cmd("\tDCA REGS+%o\n", r*3);
+                push_cmd("\tDCA REGS+%o\n", r*3 + 1);
+                push_cmd("\tDCA REGS+%o\n", r*3 + 2);
+                push_cmd("\tTAD TMP1\n");
+                push_cmd("\tSNL\n");
+                push_cmd("\t ISZ REGS+%o\n", r*3);
+                push_cmd("\tCLA CLL\n");
                 break;
             case TAC_GOTO:
-                fprintf(output, "\tJMP l%u\n", inst.x);
+                commands.crt_label = true;
+                commands.data.label.name = inst.x;
+                commands.data.label.define = false;
+                push_cmd("\tJMP #labell#\n");
                 break;
             case TAC_BIZ:
+                commands.crt_label = true;
+                commands.data.label.name = inst.y;
+                commands.data.label.define = false;
                 for (short k = 0; k < 3; k++) {
-                    fprintf(output, "\tTAD REGS+%o\n", x*3 + k);
-                    fprintf(output, "\tSZA\n");
-                    fprintf(output, "\t JMP .+%o\n", 8 - k*3);
+                    push_cmd("\tTAD REGS+%o\n", x*3 + k);
+                    push_cmd("\tSZA CLA\n");
+                    push_cmd("\t JMP .+%o\n", 8 - k*3);
                 }
-                fprintf(output, "\tJMP l%u\n", inst.y);
+                push_cmd("\tJMP #labell#\n");
                 break;
             case TAC_LABEL:
-                fprintf(output, "l%u,", inst.x);
+                commands.crt_label = true;
+                commands.data.label.name = inst.x;
+                commands.data.label.define = true;
+                push_cmd("#labell#,");
                 break;
             case TAC_RETURN_VAL:
-                fprintf(output, "\tISZ SP2\n");
+                push_cmd("\tTAD SP2\n");
+                push_cmd("\tTAD P2\n");
+                push_cmd("\tDCA TMP2\n");
                 for (short k = 0; k < 3; k++) {
-                    fprintf(output, "\tTAD REGS+%o\n", x*3 + k);
-                    fprintf(output, "\tDCA I SP2\n");
+                    push_cmd("\tTAD REGS+%o\n", x*3 + k);
+                    push_cmd("\tDCA I TMP2\n");
                 }
-                fprintf(output, "\tTAD SP2\n");
-                fprintf(output, "\tTAD N4\n");
-                fprintf(output, "\tDCA SP2\n");
                 break;
             case TAC_RETURN_INT:
-                const_idx = create_const(&arena, &consts, x, &const_size);
-                fprintf(output, "\tISZ SP2\n");
+                commands.crt_const = true;
+                commands.data.const_number = inst.x;
+                const_size = get_const_size(inst.x);
+
+                push_cmd("\tTAD SP2\n");
+                push_cmd("\tTAD P2\n");
+                push_cmd("\tDCA TMP2\n");
                 for (short k = 0; k < 3; k++) {
-                    fprintf(output, "\tTAD i%zu\n", const_idx + k);
-                    fprintf(output, "\tDCA I SP2\n");
+                    if (k < const_size)
+                        push_cmd("\tTAD #cnst#+%d\n", k);
+                    push_cmd("\tDCA I TMP2\n");
                 }
-                fprintf(output, "\tTAD SP2\n");
-                fprintf(output, "\tTAD N4\n");
-                fprintf(output, "\tDCA SP2\n");
                 break;
             case TAC_NOP:
                 break;
             }
-            fputc('\n', output);
+
+            add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
         }
         
-        if (string_eq(ir.symbols.data[func.name], S("main"))) {
-            fprintf(output, "\tHLT\n");
+        if (is_main) {
+            push_cmd("\tHLT\n");
         } else {
-            if (temps_count > 0) {
-                fprintf(output, "\tJMS EPLG\n");
-                fprintf(output, "\t%o\n", -temps_count & 07777);
-            }
-            else {
-                fprintf(output, "\tJMP I SP2\n");
-            }
+            push_cmd("\tJMS I EPLGP\n");
+            push_cmd("\t%o\n", -temps_count * 3 & 07777);
         }
+        add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
     }
 
     fputc('\n', output);
 
-    for (size_t i = 0; i < ir.data.len; i++) {
-        StaticVariable var = ir.data.data[i];
-        String name = ir.symbols.data[var.name];
-        
-        if (name.string != NULL)
-            fprintf(output, "/ %.*s\n", PS(name));
-        fprintf(output, "d%zu,", var.name);
-        /*for (int j = 0; j < var.data.length; j++) {
-            fprintf(output, "\t%d\n", var.data.string[j]);
+    add_page_end(output, &functions, &consts, &data, &labels, page_num);
+
+    fprintf(output, "DECIMAL\n");
+    for (size_t i = 0; i < data.len; i++) {
+        PDP8Data dt = data.data[i];
+        for (size_t j = 0; j < ir.data.len; j++) {
+            StaticVariable var = ir.data.data[j];
+            if (dt.name == var.name) {
+                fprintf(output, "d%.2zx,", i);
+                generate_string(output, var.data, true);
+            }
         }
-        fputs("\t0\n", output);*/
-        generate_string(output, var.data, true);
+    }
+    fprintf(output, "OCTAL\n");
+
+    size_t main_idx;
+    if (lookup_function(&functions, S("main"), &main_idx)) {
+        fprintf(output, "*200\n");
+        fprintf(output, "\tKCC\n");
+        fprintf(output, "\tTPC\n");
+        fprintf(output, "\tJMP I MAINP\n");
+        fprintf(output, "MAINP,\tf%.2zx+1\n", main_idx);
     }
 
-    for (size_t i = 0; i < consts.len; i++) {
-        PDP8Const c = consts.data[i];
-        fprintf(output, "i%zu,", i);
-        for (short j = 0; j < c.size; j++) {
-            fprintf(output, "\t%o\n", (c.data >> (j * 12)) & 07777);
-        }
-    }
+    fprintf(output,"$\n");
 
     arena_destroy(&arena);
 }
