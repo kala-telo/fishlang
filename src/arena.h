@@ -17,7 +17,7 @@ struct _Arena {
     /* V bump allocator V */
     uint8_t *data;
     size_t allocated;
-    size_t size;
+    size_t capacity;
     /* ^ bump allocator ^ */
     Arena *next;
 };
@@ -31,18 +31,18 @@ static inline void* arena_alloc(Arena *arena, size_t size) {
         return arena_alloc(arena->next, size);
 
     if (arena->data == NULL) {
-        const size_t s = 4096;
+        size_t s = 4096 > size ? 4096 : size*2;
         arena->data = calloc(1, s);
-        arena->size = s; 
+        arena->capacity = s; 
         arena->meta.data_heap_allocated = true;
     }
-    if(size > arena->size) {
-        fprintf(stderr, "Failed to allocate size %zu\n", size);
-        abort();
-    }
+    // if(size > arena->capacity) {
+    //     fprintf(stderr, "Failed to allocate size %zu\n", size);
+    //     abort();
+    // }
     arena->allocated += size;
-    if (arena->allocated > arena->size) {
-        arena->allocated = arena->size;
+    if (arena->allocated > arena->capacity) {
+        arena->allocated = arena->capacity;
         arena->next = calloc(1, sizeof(*arena));
         if (arena->next == NULL) return NULL;
         arena->next->meta.arena_heap_allocated = true;

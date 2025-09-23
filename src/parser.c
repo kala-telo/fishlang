@@ -10,7 +10,7 @@ Token expect(Token token, TokenKind expected) {
         switch (token.kind) {
         case LEX_STRING:
         case LEX_NAME:
-            fprintf(stderr, "%s:%d%d Expected %s, got %s [%.*s]\n",
+            fprintf(stderr, "%s:%d:%d Expected %s, got %s [%.*s]\n",
                     token.loc.file, token.loc.line + 1, token.loc.col + 1,
                     tok_names[expected], tok_names[token.kind], PS(token.str));
             break;

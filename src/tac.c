@@ -293,6 +293,19 @@ bool constant_propagation(TAC32Arr *tac) {
                 inst->function = TAC_ADDI;
                 inst->y = constant_value[inst->y].v;
                 changed = true;
+            } else if (is_constant[inst->x] && is_constant[inst->y]) {
+                if (constant_value[inst->x].kind == SYM ||
+                    constant_value[inst->y].kind == SYM) break;
+                inst->function = TAC_LOAD_INT;
+                inst->x = constant_value[inst->x].v + constant_value[inst->y].v;
+                changed = true;
+            }
+            break;
+        case TAC_ADDI:
+            if (is_constant[inst->x]) {
+                inst->function = TAC_LOAD_INT;
+                inst->x = inst->y + constant_value[inst->x].v;
+                changed = true;
             }
             break;
         case TAC_SUB:

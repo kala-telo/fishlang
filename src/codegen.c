@@ -77,13 +77,16 @@ IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
             assert(ctx->current_function != NULL);
             if (string_eq(node.as.call.callee, S("+"))) {
                 codegen(arena, node.as.call.args, ctx);
-                if (node.as.call.args.len != 2)
+                if (node.as.call.args.len < 2)
                     TODO();
-                da_append(arena, 
-                    ctx->current_function->code,
-                    ((TAC32){++ctx->temp_num, TAC_ADD, da_pop(ctx->args_stack),
-                             da_pop(ctx->args_stack)}));
-                da_append(arena, ctx->args_stack, ctx->temp_num);
+                size_t j = node.as.call.args.len-2;
+                do {
+                    da_append(arena, ctx->current_function->code,
+                              ((TAC32){++ctx->temp_num, TAC_ADD,
+                                       da_pop(ctx->args_stack),
+                                       da_pop(ctx->args_stack)}));
+                    da_append(arena, ctx->args_stack, ctx->temp_num);
+                } while (j-- > 0);
             } else if (string_eq(node.as.call.callee, S("-"))) {
                 codegen(arena, node.as.call.args, ctx);
                 if (node.as.call.args.len != 2)
@@ -230,7 +233,7 @@ IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
             assert(ctx->current_function != NULL);
             da_append(arena, 
                 ctx->current_function->code,
-                ((TAC32){++ctx->temp_num, TAC_LOAD_INT, node.as.boolean ? 0 : 1, 0}));
+                ((TAC32){++ctx->temp_num, TAC_LOAD_INT, node.as.boolean ? 1 : 0, 0}));
             da_append(arena, ctx->args_stack, ctx->temp_num);
             break;
         case AST_STRING:

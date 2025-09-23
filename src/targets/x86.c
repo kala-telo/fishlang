@@ -18,6 +18,7 @@ static const char *const reg_names[] = {
 };
 
 #define ARRLEN(xs) (sizeof(xs)/sizeof(*(xs)))
+#define MIN(x, y) ((x) > (y) ? (y) : (x))
 
 static void x86_prepare_for_call(FILE* output, TAC32Arr func, X86Stack stack, IR ir) {
     // kinda ugly but pushl instructions seem to produce shorter
@@ -63,7 +64,7 @@ void codegen_x86_32(IR ir, FILE *output) {
                 PS(ir.symbols.data[ir.functions.data[i].name]));
         TAC32Arr func = ir.functions.data[i].code;
         fprintf(output, "    subl $%d, %%esp\n", temps_count*4);
-        for (size_t j = 0; j < temps_count; j++) {
+        for (size_t j = 0; j < MIN(temps_count, ARRLEN(reg_names)); j++) {
             fprintf(output, "    movl %s, %zu(%%esp)\n", reg_names[j], j*4);
         }
         fprintf(output, "\n");

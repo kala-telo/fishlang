@@ -235,19 +235,21 @@ Type typecheck(ASTArr ast, TypeTable tt) {
         case AST_CALL: {
             if (string_eq(node.as.call.callee, S("+")) ||
                 string_eq(node.as.call.callee, S("-"))) {
-                assert(node.as.call.args.len == 2);
+                assert(node.as.call.args.len >= 2);
                 Type t1 = typecheck(AST2ARR(node.as.call.args.data[0]), tt);
-                Type t2 = typecheck(AST2ARR(node.as.call.args.data[1]), tt);
-                if (!types_match(t1, t2)) {
-                    fprintf(stderr, "%s:%d:%d -- ", PLOC(node.loc));
-                    fprintf(stderr, "Type `");
-                    print_type(stderr, t1);
-                    fprintf(stderr, "` doesn't match type `"); 
-                    print_type(stderr, t2);
-                    fprintf(stderr, "`\n");
-                }
-                if (!type_int(t1)) {
-                    TODO();
+                for (size_t j = 1; j < node.as.call.args.len; j++) {
+                    Type t2 = typecheck(AST2ARR(node.as.call.args.data[j]), tt);
+                    if (!types_match(t1, t2)) {
+                        fprintf(stderr, "%s:%d:%d -- ", PLOC(node.loc));
+                        fprintf(stderr, "Type `");
+                        print_type(stderr, t1);
+                        fprintf(stderr, "` doesn't match type `");
+                        print_type(stderr, t2);
+                        fprintf(stderr, "`\n");
+                    }
+                    if (!type_int(t1)) {
+                        TODO();
+                    }
                 }
                 t.type = t1.type;
                 break;

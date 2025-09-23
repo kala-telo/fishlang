@@ -19,6 +19,7 @@ void codegen_debug(IR ir, FILE *output) {
                 else
                     fprintf(output, "    ");
                 fprintf(output, "r%d()\n", x);
+                call_count = 0;
                 break;
             case TAC_CALL_SYM:
                 if (inst.result)
