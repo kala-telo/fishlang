@@ -5,34 +5,34 @@
 #include "../da.h"
 
 #define STDFN_COUNT 2
-#define push_cmd(...) commands.strp += snprintf(commands.strp, sizeof(commands.str), __VA_ARGS__) // Добавление команды ассемблера в буфер команд
+#define push_cmd(...) commands.strp += snprintf(commands.strp, sizeof(commands.str), __VA_ARGS__) // Adding a command to the commands buffer
 
 typedef struct {
-    short size;
-    uint64_t data;
+    short size;         // Size in 12-bit words
+    uint64_t data;      // rounding up 36 bits to 64 bits (64 > 36 > 32)
 } PDP8Const;
 
 typedef struct {
     PDP8Const *data;
     size_t len, capacity;
-} PDP8ConstArr;
+} PDP8ConstsArr;
 
 typedef struct {
-    String name;        // Имя функции
-    short nuses;        // Количество использований функции, нужно для разбиения программы на страницы
-    bool current_page;  // Находится ли функция на текущей странице
-    bool link_on_page;  // Есть ли на текущей странице ссылка на эту функцию
+    String name;        // Function name
+    short nuses;        // Number of function uses
+    bool current_page;  // Is a function in the current page?
+    bool link_on_page;  // Is there a function function on the current page?
 } PDP8Function;
 
 typedef struct {
     PDP8Function *data;
     size_t len, capacity;
-} PDP8FunctionArr;
+} PDP8FunctionsArr;
 
 typedef struct {
-    size_t name;        // Номер в таблице символов
-    short nuses;        // Количество использований данных, нужно для разбиения программы на страницы
-    bool link_on_page;  // Есть ли на текущей странице ссылка на эти данные
+    size_t name;        // Number in the symbols table
+    short nuses;
+    bool link_on_page;
 } PDP8Data;
 
 typedef struct {
@@ -41,7 +41,7 @@ typedef struct {
 } PDP8DataArr;
 
 typedef struct {
-    size_t name;
+    size_t name;        // Number in the symbols table
     short nuses;
     bool current_page;
     bool link_on_page;
@@ -50,7 +50,7 @@ typedef struct {
 typedef struct {
     PDP8Label *data;
     size_t len, capacity;
-} PDP8LabelArr;
+} PDP8LabelsArr;
 
 typedef struct {
     char str[15*30];
@@ -73,7 +73,7 @@ typedef struct {
     } data;
 } PDP8CommandsBuffer;
 
-// Замена всех строк find в строке src на rplc
+// Replacing all strings find in src with rplc
 static void replace(char *src, char *find, char *rplc) {
     char *p = NULL;
     while ((p = strstr(src, find)) != NULL) {
@@ -81,9 +81,11 @@ static void replace(char *src, char *find, char *rplc) {
     }
 }
 
-// Высчитать размер константы в 12-битных словах
+// Calculating constant size in 12-bit words
 static short get_const_size(uint32_t number) {
-    if (number < 1<<12)
+    if (number == 0)
+        return 0;
+    else if (number < 1<<12)
         return 1;
     else if (number < 1<<12)
         return 2;
@@ -91,7 +93,7 @@ static short get_const_size(uint32_t number) {
         return 3;
 }
 
-static size_t create_const(Arena *arena, PDP8ConstArr *consts, uint32_t number, short *const_size) {
+static size_t create_const(Arena *arena, PDP8ConstsArr *consts, uint32_t number, short *const_size) {
     *const_size = get_const_size(number); // Размер константы в 12-битных словах
     
     size_t const_idx;
@@ -111,7 +113,7 @@ static size_t create_const(Arena *arena, PDP8ConstArr *consts, uint32_t number, 
     return const_idx;
 }
 
-static bool lookup_function(PDP8FunctionArr *functions, String name, size_t *fn_idx_result) {
+static bool lookup_function(PDP8FunctionsArr *functions, String name, size_t *fn_idx_result) {
     for (size_t fn_idx = 0; fn_idx < functions->len; fn_idx++) {
         if (string_eq(functions->data[fn_idx].name, name)){
             *fn_idx_result = fn_idx;
@@ -121,7 +123,7 @@ static bool lookup_function(PDP8FunctionArr *functions, String name, size_t *fn_
     return false;
 }
 
-static bool lookup_label(PDP8LabelArr *labels, uint32_t name, size_t *lb_idx_result) {
+static bool lookup_label(PDP8LabelsArr *labels, uint32_t name, size_t *lb_idx_result) {
     for (size_t label_idx = 0; label_idx < labels->len; label_idx++) {
         PDP8Label *lb = &(labels->data[label_idx]);
         if (lb->name == name) {
@@ -143,7 +145,7 @@ static bool lookup_data(PDP8DataArr *data, uint32_t name, size_t *dt_idx_result)
     return false;
 }
 
-static size_t create_function(Arena *arena, PDP8FunctionArr *functions, String name, bool call) {
+static size_t create_function(Arena *arena, PDP8FunctionsArr *functions, String name, bool call) {
     size_t fn_idx;
     bool find = lookup_function(functions, name, &fn_idx);
 
@@ -182,7 +184,7 @@ static size_t create_data(Arena *arena, PDP8DataArr *data_arr, size_t name) {
     return data_idx;
 }
 
-static size_t create_label(Arena *arena, PDP8LabelArr *label_arr, size_t name, bool define) {
+static size_t create_label(Arena *arena, PDP8LabelsArr *label_arr, size_t name, bool define) {
     size_t label_idx;
 
     bool find = lookup_label(label_arr, name, &label_idx);
@@ -205,10 +207,10 @@ static size_t create_label(Arena *arena, PDP8LabelArr *label_arr, size_t name, b
     return label_idx;
 }
 
-// Добавление в конец страницы памяти ссылок на функции, данные и метки, константы
-static void add_page_end(FILE *output, PDP8FunctionArr *functions, PDP8ConstArr *consts, PDP8DataArr *data, PDP8LabelArr *labels,
+// Adding pointers to functions, data, labels and constants to the end of the page
+static void add_page_end(FILE *output, PDP8FunctionsArr *functions, PDP8ConstsArr *consts, PDP8DataArr *data, PDP8LabelsArr *labels,
                          short page_num) {
-    // Добавление ссылок на функции
+    // Adding pointers to functions
     for (size_t i = 0; i < functions->len; i++) {
         PDP8Function *fn = &(functions->data[i]);
         if (fn->link_on_page)
@@ -217,7 +219,7 @@ static void add_page_end(FILE *output, PDP8FunctionArr *functions, PDP8ConstArr 
         fn->current_page = false;
     }
 
-    // Добавление ссылок на данные
+    // Adding pointers to data
     for (size_t i = 0; i < data->len; i++) {
         PDP8Data *dt = &(data->data[i]);
         if (dt->link_on_page)
@@ -225,12 +227,12 @@ static void add_page_end(FILE *output, PDP8FunctionArr *functions, PDP8ConstArr 
         dt->link_on_page = false;
     }
 
-    // Добавление констант
+    // Adding constants
     for (size_t i = 0; i < consts->len; i++) {
         PDP8Const c = consts->data[i];
         fprintf(output, "i%02zup%02x,", i, page_num);
-        if (c.data >> 31 & 1) {             // Если число отрицательное
-            c.data |= (uint64_t)0xF << 32;  // добавить ему в конец 4 бита, то есть дополнить до 36 бит
+        if (c.data >> 31 & 1) {             // If the number is negative
+            c.data |= (uint64_t)0xF << 32;  // add 4 bits to it at the end (add up to 36 bits)
         }
         for (short j = 0; j < c.size; j++) {
             fprintf(output, "\t%o\n", (short)(c.data >> (j * 12)) & 07777);
@@ -238,7 +240,7 @@ static void add_page_end(FILE *output, PDP8FunctionArr *functions, PDP8ConstArr 
     }
     consts->len = 0;
 
-    // Добавление ссылок на метки
+    // Adding pointers to labels
     for (size_t i = 0; i < labels->len; i++) {
         PDP8Label *lb = &(labels->data[i]);
         if (lb->link_on_page)
@@ -248,11 +250,11 @@ static void add_page_end(FILE *output, PDP8FunctionArr *functions, PDP8ConstArr 
     }
 }
 
-// Добавление команд из буфера commands в файл output
+// Adding commands from the buffer to the output file
 static void add_commands(FILE *output, PDP8CommandsBuffer *commands, Arena *arena,
-                         PDP8FunctionArr *functions, PDP8ConstArr *consts, PDP8DataArr *data, PDP8LabelArr *labels,
+                         PDP8FunctionsArr *functions, PDP8ConstsArr *consts, PDP8DataArr *data, PDP8LabelsArr *labels,
                          short *page_num, short *command_num) {
-    short commands_count = 0; // Количество команд в буфере
+    short commands_count = 0; // Number of commands in the buffer
     for (char *commandspt = commands->str; *commandspt != '\0'; commandspt++) {
         if (*commandspt == '\n')
             commands_count++;
@@ -375,17 +377,17 @@ static void add_commands(FILE *output, PDP8CommandsBuffer *commands, Arena *aren
     commands->strp = commands->str;
 }
 
-static void add_store_sp2(PDP8CommandsBuffer commands) {
-    push_cmd("\tTAD SP1\n");
+static void add_store_BP(PDP8CommandsBuffer commands) {
+    push_cmd("\tTAD SP\n");
     push_cmd("\tTAD P2\n");
     push_cmd("\tDCA TMP1\n");
-    push_cmd("\tTAD SP2\n");
+    push_cmd("\tTAD BP\n");
     push_cmd("\tDCA I TMP1\n");
-    push_cmd("\tTAD SP1\n");
-    push_cmd("\tDCA SP2\n");
+    push_cmd("\tTAD SP\n");
+    push_cmd("\tDCA BP\n");
     push_cmd("\tTAD TMP1\n");
     push_cmd("\tTAD P4\n");
-    push_cmd("\tDCA SP1\n");
+    push_cmd("\tDCA SP\n");
 }
 
 void codegen_pdp8(IR ir, FILE *output) {
@@ -400,21 +402,21 @@ void codegen_pdp8(IR ir, FILE *output) {
     }
 
     Arena arena = {0};
-    PDP8ConstArr consts = {0};
+    PDP8ConstsArr consts = {0};
     PDP8DataArr data = {0};
-    PDP8LabelArr labels = {0};
+    PDP8LabelsArr labels = {0};
     String std_functions[STDFN_COUNT] = {
         [0] = S("puts"),
         [1] = S("printf"),
     };
-    PDP8FunctionArr functions = {0};
+    PDP8FunctionsArr functions = {0};
     for (int i = 0; i < STDFN_COUNT; i++) {
         PDP8Function f = {.name = std_functions[i], .nuses = 0, .current_page = false, .link_on_page = false};
         da_append(&arena, functions, f);
     }
 
-    short page_num = 3;         // Номер страницы памтяи
-    short command_num = 0131;    // Номер команды на странице памяти
+    short page_num = 3;         // Page number
+    short command_num = 0131;   // Command number on the page
 
     for (size_t i = 0; i < ir.functions.len; i++) {
         StaticFunction func = ir.functions.data[i];
@@ -423,7 +425,7 @@ void codegen_pdp8(IR ir, FILE *output) {
         PDP8CommandsBuffer commands = {0};
         commands.strp = commands.str;
 
-        bool sp2_stored = false;
+        bool BP_stored = false;
 
         bool is_main = string_eq(ir.symbols.data[func.name], S("main"));
 
@@ -436,7 +438,7 @@ void codegen_pdp8(IR ir, FILE *output) {
             push_cmd("\tSNA\n");
             push_cmd("\t JMP MAINSP\n");
         }
-        push_cmd("\tDCA I SP2\n");
+        push_cmd("\tDCA I BP\n");
         push_cmd("\tJMS I PRLGP\n");
         push_cmd("\t%o\n", -temps_count * 3 & 07777);
         if (is_main)
@@ -453,14 +455,14 @@ void codegen_pdp8(IR ir, FILE *output) {
 
             switch (inst.function) {
             case TAC_CALL_REG:
-                if (!sp2_stored) {
-                    add_store_sp2(commands);
+                if (!BP_stored) {
+                    add_store_BP(commands);
                     add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
                 }
 
                 push_cmd("\tJMS I REGS+%o\n", x*3);
                 if (inst.result) {
-                    push_cmd("\tTAD SP1\n");
+                    push_cmd("\tTAD SP\n");
                     push_cmd("\tTAD P3\n");
                     push_cmd("\tDCA TMP2\n");
                     push_cmd("\tTAD I TMP2\n");
@@ -471,11 +473,11 @@ void codegen_pdp8(IR ir, FILE *output) {
                     push_cmd("\tDCA REGS+%o\n", r*3 + 2);
                 }
 
-                sp2_stored = false;
+                BP_stored = false;
                 break;
             case TAC_CALL_SYM:
-                if (!sp2_stored) {
-                    add_store_sp2(commands);
+                if (!BP_stored) {
+                    add_store_BP(commands);
                     add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
                 }
 
@@ -485,7 +487,7 @@ void codegen_pdp8(IR ir, FILE *output) {
                 commands.data.function.call = true;
 
                 if (inst.result) {
-                    push_cmd("\tTAD SP1\n");
+                    push_cmd("\tTAD SP\n");
                     push_cmd("\tTAD P3\n");
                     push_cmd("\tDCA TMP2\n");
                     push_cmd("\tTAD I TMP2\n");
@@ -496,44 +498,44 @@ void codegen_pdp8(IR ir, FILE *output) {
                     push_cmd("\tDCA REGS+%o\n", r*3 + 2);
                 }
                 
-                sp2_stored = false;
+                BP_stored = false;
                 break;
             case TAC_CALL_PUSH:
-                if (!sp2_stored) {
-                    add_store_sp2(commands);
+                if (!BP_stored) {
+                    add_store_BP(commands);
                     add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
-                    sp2_stored = true;
+                    BP_stored = true;
                 }
 
                 push_cmd("\tTAD REGS+%o\n", x*3);
-                push_cmd("\tDCA I SP1\n");
+                push_cmd("\tDCA I SP\n");
                 push_cmd("\tTAD REGS+%o\n", x*3 + 1);
-                push_cmd("\tDCA I SP1\n");
+                push_cmd("\tDCA I SP\n");
                 push_cmd("\tTAD REGS+%o\n", x*3 + 2);
-                push_cmd("\tDCA I SP1\n");
+                push_cmd("\tDCA I SP\n");
                 break;
             case TAC_CALL_PUSH_INT:
-                if (!sp2_stored) {
-                    add_store_sp2(commands);
+                if (!BP_stored) {
+                    add_store_BP(commands);
                     add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
-                    sp2_stored = true;
+                    BP_stored = true;
                 }
 
                 const_size = get_const_size(inst.x);
-                commands.crt_const = true;
+                commands.crt_const = const_size > 0;
                 commands.data.const_number = inst.x;
 
                 for (short k = 0; k < 3; k++) {
                     if (k < const_size)
                         push_cmd("\tTAD #cnst#+%d\n", k);
-                    push_cmd("\tDCA I SP1\n");
+                    push_cmd("\tDCA I SP\n");
                 }
                 break;
             case TAC_CALL_PUSH_SYM:
-                if (!sp2_stored) {
-                    add_store_sp2(commands);
+                if (!BP_stored) {
+                    add_store_BP(commands);
                     add_commands(output, &commands, &arena, &functions, &consts, &data, &labels, &page_num, &command_num);
-                    sp2_stored = true;
+                    BP_stored = true;
                 }
 
                 if (ir.symbols.data[inst.x].string != NULL) {
@@ -546,13 +548,13 @@ void codegen_pdp8(IR ir, FILE *output) {
                     commands.crt_data = true;
                     commands.data.data_name = inst.x;
                 }
-                push_cmd("\tDCA I SP1\n");
-                push_cmd("\tDCA I SP1\n");
-                push_cmd("\tDCA I SP1\n");
+                push_cmd("\tDCA I SP\n");
+                push_cmd("\tDCA I SP\n");
+                push_cmd("\tDCA I SP\n");
                 break;
             case TAC_LOAD_INT:
                 const_size = get_const_size(inst.x);
-                commands.crt_const = true;
+                commands.crt_const = const_size > 0;
                 commands.data.const_number = inst.x;
 
                 for (short k = 0; k < 3; k++) {
@@ -565,7 +567,7 @@ void codegen_pdp8(IR ir, FILE *output) {
                 commands.crt_const = true;
                 commands.data.const_number = (5 + inst.x * 3) & 07777;
                 
-                push_cmd("\tTAD SP2\n");
+                push_cmd("\tTAD BP\n");
                 push_cmd("\tTAD #cnst#\n");
                 push_cmd("\tDCA TMP2\n");
                 for (short k = 0; k < 3; k++) {
@@ -620,9 +622,9 @@ void codegen_pdp8(IR ir, FILE *output) {
                 break;
             case TAC_ADDI:
             case TAC_SUBI:
-                commands.crt_const = true;
+                const_size = get_const_size(inst.y * (inst.function == TAC_ADDI ? 1 : -1));
                 commands.data.const_number = inst.y * (inst.function == TAC_ADDI ? 1 : -1);
-                const_size = get_const_size(inst.y);
+                commands.crt_const = const_size > 0;
 
                 push_cmd("\tCLA CLL\n");
                 for (short k = 0; k < 3; k++) {
@@ -658,8 +660,8 @@ void codegen_pdp8(IR ir, FILE *output) {
                 push_cmd("\tCLA CLL\n");
                 break;
             case TAC_LTI:
-                commands.crt_const = true;
                 commands.data.const_number = -inst.y;
+                commands.crt_const = get_const_size(-inst.y) > 0;
                 
                 push_cmd("\tCLA CLL\n");
                 for (short k = 0; k < 3; k++) {
@@ -701,7 +703,7 @@ void codegen_pdp8(IR ir, FILE *output) {
                 push_cmd("#labell#,");
                 break;
             case TAC_RETURN_VAL:
-                push_cmd("\tTAD SP2\n");
+                push_cmd("\tTAD BP\n");
                 push_cmd("\tTAD P2\n");
                 push_cmd("\tDCA TMP2\n");
                 for (short k = 0; k < 3; k++) {
@@ -710,11 +712,11 @@ void codegen_pdp8(IR ir, FILE *output) {
                 }
                 break;
             case TAC_RETURN_INT:
-                commands.crt_const = true;
-                commands.data.const_number = inst.x;
                 const_size = get_const_size(inst.x);
+                commands.data.const_number = inst.x;
+                commands.crt_const = const_size > 0;
 
-                push_cmd("\tTAD SP2\n");
+                push_cmd("\tTAD BP\n");
                 push_cmd("\tTAD P2\n");
                 push_cmd("\tDCA TMP2\n");
                 for (short k = 0; k < 3; k++) {
