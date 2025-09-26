@@ -8,13 +8,16 @@
 #include <sys/types.h>
 #include <stdint.h>
 #include <dirent.h>
+#include <unistd.h>
+#include <ctype.h>
+#include <sys/wait.h>
 
 #ifndef DEBUG
 #define DEBUG 1
 #endif
 
 #if DEBUG
-#define CC "clang "
+#define CC "gcc "
 #define CFLAGS "-pedantic -std=c99 -fsanitize=address -O2 -D_FORTIFY_SOURCE=3 -g -Wall -Wextra "
 #else
 #define CC "cc "
@@ -58,11 +61,13 @@ static const char *const target_compiler[] = {
     [TARGET_PPC] = "powerpc-unknown-linux-musl-gcc",
     [TARGET_X86_32] = "i686-pc-linux-musl-gcc",
     [TARGET_MIPS] = "mips-unknown-linux-musl-gcc",
+    [TARGET_PDP8] = "macro8x",
 };
 static const char *const runners[] = {
     [TARGET_PPC] = "qemu-ppc",
     [TARGET_X86_32] = "qemu-i386",
     [TARGET_MIPS] = "qemu-mips",
+    [TARGET_PDP8] = "pdp8",
 };
 
 static bool endswith(String str, String suf) {
@@ -124,7 +129,7 @@ bool rebuild_myself(void) {
     return system(buffer) != 0;
 }
 
-bool link(String *files, size_t files_count) {
+bool link_(String *files, size_t files_count) {
     struct {
         char *data;
         size_t len, capacity;
@@ -154,6 +159,50 @@ bool build_c(String path) {
     return system(buffer) != 0;
 }
 
+FILE *run_pdp8(char *output) {
+    FILE *file_stdout;
+
+    int stdin_pipe[2], stdout_pipe[2];
+    if (pipe(stdin_pipe) || pipe(stdout_pipe)) {
+        return STATUS_BUILD_FAIL;
+    }
+
+    pid_t pdp8_pid = fork();
+    if (pdp8_pid < 0) {
+        return STATUS_BUILD_FAIL;
+    } else if (pdp8_pid == 0) {
+        // Child process
+        dup2(stdin_pipe[0], STDIN_FILENO);
+        dup2(stdout_pipe[1], STDOUT_FILENO);
+        dup2(stdout_pipe[1], STDERR_FILENO);
+
+        close(stdin_pipe[1]);
+        close(stdout_pipe[0]);
+        
+        execlp(runners[TARGET_PDP8], runners[TARGET_PDP8], NULL); // Run emulator
+        exit(1);
+    } else {
+        // Parent process
+        close(stdin_pipe[0]);
+        close(stdout_pipe[1]);
+
+        file_stdout = fdopen(stdout_pipe[0], "r");
+
+        char buffer[1000];
+        snprintf(buffer, sizeof(buffer), "l %s\nru 200\nq\n", output);
+        write(stdin_pipe[1], buffer, strlen(buffer) + 1);
+
+        short n = 0;
+        while (n < 2) {
+            if (getc(file_stdout) == '\n')
+                n++;
+        }
+        
+    }
+
+    return file_stdout;
+}
+
 Status run_file(Target target, String file, bool gen_test) {
     char asm_path[1000], buffer[1000], output[1000];
     snprintf(asm_path, sizeof(asm_path), ".build/examples/%.*s.S",
@@ -165,39 +214,70 @@ Status run_file(Target target, String file, bool gen_test) {
     }
     snprintf(output, sizeof(output), ".build/examples/%.*s-%s", file.length - 4,
              file.string, targets[target]);
-    snprintf(buffer, sizeof(buffer), "%s -static %s -o %s",
-             target_compiler[target], asm_path, output);
+    if (target == TARGET_PDP8) {
+        snprintf(buffer, sizeof(buffer), "%s %s && mv .build/examples/%.*s.bin %s && rm -f .build/examples/%.*s.lst",
+                 target_compiler[target], asm_path, file.length - 4, file.string, output, file.length - 4, file.string);
+    } else {
+        snprintf(buffer, sizeof(buffer), "%s -static %s -o %s",
+                 target_compiler[target], asm_path, output);
+    }
+    
     if (system(buffer) != 0) {
         return STATUS_BUILD_FAIL;
     }
     if (gen_test) {
-        FILE *reference = fopen(file2test(file), "w");
+        FILE *reference = fopen(file2test(file), "w"),
+             *file_stdout;
         assert(reference != NULL);
-        snprintf(buffer, sizeof(buffer), "%s %s", runners[target], output);
-        FILE *file_stdout = popen(buffer, "r");
+        if (target == TARGET_PDP8) {
+            file_stdout = run_pdp8(output);
+        } else {
+            snprintf(buffer, sizeof(buffer), "%s %s", runners[target], output);
+            file_stdout = popen(buffer, "r");
+        }
         int c;
         while ((c = getc(file_stdout)) != EOF) {
             putc(c, reference);
         }
         fclose(reference);
-        pclose(file_stdout);
+        if (target == TARGET_PDP8)
+            fclose(file_stdout);
+        else
+            pclose(file_stdout);
     } else {
-        FILE *reference = fopen(file2test(file), "r");
+        FILE *reference = fopen(file2test(file), "r"),
+             *file_stdout;
         if (reference == NULL)
             return STATUS_NO_TEST;
-        snprintf(buffer, sizeof(buffer), "%s %s", runners[target], output);
-        FILE *file_stdout = popen(buffer, "r");
+        if (target == TARGET_PDP8) {
+            file_stdout = run_pdp8(output);
+        } else {
+            snprintf(buffer, sizeof(buffer), "%s %s", runners[target], output);
+            file_stdout = popen(buffer, "r");
+        }
+
         int c1;
         while ((c1 = getc(reference)) != EOF) {
             int c2 = getc(file_stdout);
+            if (target == TARGET_PDP8) {
+                while (c2 == '\r')
+                    c2 = getc(file_stdout);
+                c1 = toupper(c1);
+            }
             if (c1 != c2) {
                 fclose(reference);
-                pclose(file_stdout);
+                if (target == TARGET_PDP8)
+                    fclose(file_stdout);
+                else
+                    pclose(file_stdout);
                 return STATUS_WRONG_OUTPUT;
             }
         }
         fclose(reference);
-        pclose(file_stdout);
+        if (target == TARGET_PDP8)
+            fclose(file_stdout);
+        else
+            pclose(file_stdout);
     }
     return STATUS_OK;
 }
@@ -326,7 +406,7 @@ int main(int argc, char *argv[]) {
         if (build_c(files[i]))
             return -1;
     }
-    link(files, ARRLEN(files));
+    link_(files, ARRLEN(files));
     if (run || gen_test) {
         if (create_dir(".build/examples")) return -1;
         printf("\n\n");

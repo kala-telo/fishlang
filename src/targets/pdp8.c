@@ -632,6 +632,8 @@ void codegen_pdp8(IR ir, FILE *output) {
                     if (k < const_size)
                         push_cmd("\tTAD #cnst#+%d\n", k);
                     push_cmd("\tDCA REGS+%o\n", r*3 + k);
+                    if (k < 2)
+                        push_cmd("\tRAL\n");
                 }
                 break;
             case TAC_LT:

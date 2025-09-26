@@ -44,3 +44,6 @@ It took me about 3 attemts to get it to point I'm happy with.
 - https://wiki.osdev.org/Calling_Conventions
 ## MIPS
 - https://en.wikibooks.org/wiki/MIPS_Assembly/Register_File
+## PDP-8
+- http://bitsavers.informatik.uni-stuttgart.de/pdf/dec/pdp8/pdp8/F-85_PDP-8_Users_Handbook_May66.pdf
+- http://bitsavers.informatik.uni-stuttgart.de/www.computer.museum.uq.edu.au/pdf/DEC-08-ASAB-D%20PAL%20III%20Symbolic%20Assembler%20Programming%20Manual.pdf
