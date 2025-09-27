@@ -16,6 +16,7 @@ compiler development to me. <br>
 - [x] PowerPC
 - [x] MIPS
 - [x] x86_32
+- [x] PDP-8
 - [ ] ARM
 - [ ] RISC-V
 - ..?

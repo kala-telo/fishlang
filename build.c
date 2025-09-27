@@ -17,7 +17,7 @@
 #endif
 
 #if DEBUG
-#define CC "gcc "
+#define CC "clang "
 #define CFLAGS "-pedantic -std=c99 -fsanitize=address -O2 -D_FORTIFY_SOURCE=3 -g -Wall -Wextra "
 #else
 #define CC "cc "
@@ -158,8 +158,7 @@ bool build_c(String path) {
     printf("$ %s\n", buffer);
     return system(buffer) != 0;
 }
-
-FILE *run_pdp8(char *output) {
+int run_pdp8(char *output, FILE **out) {
     FILE *file_stdout;
 
     int stdin_pipe[2], stdout_pipe[2];
@@ -189,7 +188,8 @@ FILE *run_pdp8(char *output) {
         file_stdout = fdopen(stdout_pipe[0], "r");
 
         char buffer[1000];
-        snprintf(buffer, sizeof(buffer), "l %s\nru 200\nq\n", output);
+        snprintf(buffer, sizeof(buffer), "load %s\nrun 200\nquit\n", output);
+        puts(buffer);
         write(stdin_pipe[1], buffer, strlen(buffer) + 1);
 
         short n = 0;
@@ -200,7 +200,8 @@ FILE *run_pdp8(char *output) {
         
     }
 
-    return file_stdout;
+    *out = file_stdout;
+    return STATUS_OK;
 }
 
 Status run_file(Target target, String file, bool gen_test) {
@@ -230,7 +231,7 @@ Status run_file(Target target, String file, bool gen_test) {
              *file_stdout;
         assert(reference != NULL);
         if (target == TARGET_PDP8) {
-            file_stdout = run_pdp8(output);
+            return STATUS_NO_TEST;
         } else {
             snprintf(buffer, sizeof(buffer), "%s %s", runners[target], output);
             file_stdout = popen(buffer, "r");
@@ -240,17 +241,50 @@ Status run_file(Target target, String file, bool gen_test) {
             putc(c, reference);
         }
         fclose(reference);
-        if (target == TARGET_PDP8)
-            fclose(file_stdout);
-        else
-            pclose(file_stdout);
+        pclose(file_stdout);
     } else {
         FILE *reference = fopen(file2test(file), "r"),
              *file_stdout;
         if (reference == NULL)
             return STATUS_NO_TEST;
         if (target == TARGET_PDP8) {
-            file_stdout = run_pdp8(output);
+            int stdin_pipe[2], stdout_pipe[2];
+            if (pipe(stdin_pipe) || pipe(stdout_pipe)) {
+                return STATUS_BUILD_FAIL;
+            }
+
+            pid_t pdp8_pid = fork();
+            if (pdp8_pid < 0) {
+                return STATUS_BUILD_FAIL;
+            } else if (pdp8_pid == 0) {
+                // Child process
+                dup2(stdin_pipe[0], STDIN_FILENO);
+                dup2(stdout_pipe[1], STDOUT_FILENO);
+                dup2(stdout_pipe[1], STDERR_FILENO);
+
+                close(stdin_pipe[1]);
+                close(stdout_pipe[0]);
+                
+                execlp(runners[TARGET_PDP8], runners[TARGET_PDP8], NULL); // Run emulator
+                exit(1);
+            } else {
+                // Parent process
+                close(stdin_pipe[0]);
+                close(stdout_pipe[1]);
+
+                file_stdout = fdopen(stdout_pipe[0], "r");
+
+                char buffer[1000];
+                snprintf(buffer, sizeof(buffer), "load %s\nrun 200\nquit\n", output);
+                write(stdin_pipe[1], buffer, strlen(buffer) + 1);
+
+                short n = 0;
+                while (n < 2) {
+                    if (getc(file_stdout) == '\n')
+                        n++;
+                }
+                
+            }
         } else {
             snprintf(buffer, sizeof(buffer), "%s %s", runners[target], output);
             file_stdout = popen(buffer, "r");
