@@ -67,7 +67,7 @@ static const char *const runners[] = {
     [TARGET_PPC] = "qemu-ppc",
     [TARGET_X86_32] = "qemu-i386",
     [TARGET_MIPS] = "qemu-mips",
-    [TARGET_PDP8] = "pdp8",
+    [TARGET_PDP8] = "pdp8",             // simh version should be >= 4.0, otherwise there will be a segfault
 };
 
 static bool endswith(String str, String suf) {
