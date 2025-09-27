@@ -15,6 +15,7 @@
 typedef enum {
     TARGET_PPC,
     TARGET_X86_32,
+    TARGET_PDP8,
     TARGET_DEBUG,
     TARGET_MIPS,
     TARGET_AST,
@@ -23,6 +24,7 @@ const char *const target_names[] = {
     [TARGET_PPC] = "ppc",
     [TARGET_X86_32] = "x86_32",
     [TARGET_MIPS] = "mips",
+    [TARGET_PDP8] = "pdp8",
     [TARGET_DEBUG] = "debug",
     [TARGET_AST] = "ast",
 };
@@ -181,6 +183,9 @@ void compile(Target target, const char *const file_name, FILE *input,
         break;
     case TARGET_MIPS:
         codegen_mips(ir, out);
+        break;
+    case TARGET_PDP8:
+        codegen_pdp8(ir, out);
         break;
     case TARGET_AST:
         UNREACHABLE();

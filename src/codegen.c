@@ -11,56 +11,68 @@
 #include "todo.h"
 
 
-void generate_string(FILE *output, String str) {
+void generate_string(FILE *output, String str, bool pdp8) {
     bool escape = false;
     for (int i = 0; i < str.length; i++) {
         char c = str.string[i];
         if (escape) {
+            if (pdp8)
+                fputc('\t', output);
             switch (c) {
             case 'n':
-                fprintf(output, "10, ");
+                fprintf(output, "10");
                 escape = false;
                 break;
             case '"':
-                fprintf(output, "34, ");
+                fprintf(output, "34");
                 escape = false;
                 break;
             case 'r':
-                fprintf(output, "13, ");
+                fprintf(output, "13");
                 escape = false;
                 break;
             case 't':
-                fprintf(output, "9, ");
+                fprintf(output, "9");
                 escape = false;
                 break;
             case 'b':
-                fprintf(output, "8, ");
+                fprintf(output, "8");
                 escape = false;
                 break;
             case 'a':
-                fprintf(output, "7, ");
+                fprintf(output, "7");
                 escape = false;
                 break;
             case '0':
-                fprintf(output, "0, ");
+                fprintf(output, "0");
                 escape = false;
                 break;
             case '\\':
-                fprintf(output, "92, ");
+                fprintf(output, "92");
                 escape = false;
                 break;
             default:
                 TODO();
             }
+            if (pdp8)
+                fputc('\n', output);
+            else
+                fputs(", ", output);
         } else {
             if (str.string[i] == '\\') {
                 escape = true;
             } else {
-                fprintf(output, "%d, ", c);
+                if (pdp8)
+                    fprintf(output, "\t%d\n", c & 07777);
+                else
+                    fprintf(output, "%d, ", c);
             }
         }
     }
-    fprintf(output, "0");
+    if (pdp8)
+        fprintf(output, "\t0\n");
+    else
+        fprintf(output, "0");
 }
 
 IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
