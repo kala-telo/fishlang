@@ -16,12 +16,14 @@
 #define DEBUG 1
 #endif
 
+#define UNIT_BUILD
+
 #if DEBUG
-#define CC "clang "
-#define CFLAGS "-pedantic -std=c99 -fsanitize=address -O2 -D_FORTIFY_SOURCE=3 -g -Wall -Wextra "
+#define CC "gcc "
+#define CFLAGS "-pedantic -std=c99 -fsanitize=address -O2 -D_FORTIFY_SOURCE=3 -g -Wall -Wextra -Wno-missing-braces "
 #else
 #define CC "cc "
-#define CFLAGS "-static -pedantic -std=c99 -O3 -Wall -Wextra "
+#define CFLAGS "-static -pedantic -std=c99 -O3 -Wall -Wextra -Wno-missing-braces "
 #endif
 
 #define LD CC
@@ -35,10 +37,15 @@
 
 #define ARRLEN(xs) (sizeof(xs) / sizeof(*(xs)))
 
-#define da_append_str(arena, xs, x)                                            \
+#define da_append_cstr(arena, xs, x)                                            \
     for (int da_append_str_i = 0; da_append_str_i < strlen((x));               \
          da_append_str_i++) {                                                  \
         da_append((arena), (xs), (x)[da_append_str_i]);                        \
+    }
+#define da_append_string(arena, xs, x)                                         \
+    for (int da_append_str_i = 0; da_append_str_i < (x).length;                \
+         da_append_str_i++) {                                                  \
+        da_append((arena), (xs), (x).string[da_append_str_i]);                 \
     }
 
 typedef enum {
@@ -135,14 +142,14 @@ bool link_(String *files, size_t files_count) {
         size_t len, capacity;
     } link_command = {0};
     Arena scratch = {0};
-    da_append_str(&scratch, link_command, LD);
-    da_append_str(&scratch, link_command, CFLAGS);
+    da_append_cstr(&scratch, link_command, LD);
+    da_append_cstr(&scratch, link_command, CFLAGS);
     for (size_t i = 0; i < files_count; i++) {
         char *o_file = c2o(files[i]);
-        da_append_str(&scratch, link_command, o_file);
+        da_append_cstr(&scratch, link_command, o_file);
         da_append(&scratch, link_command, ' ');
     }
-    da_append_str(&scratch, link_command, "-o " TARGET);
+    da_append_cstr(&scratch, link_command, "-o " TARGET);
     da_append(&scratch, link_command, '\0');
     printf("$ %s\n", link_command.data);
     bool result = system(link_command.data) != 0;
@@ -436,11 +443,29 @@ int main(int argc, char *argv[]) {
         S("src/targets/pdp8.c"),
     };
 
+#ifdef UNIT_BUILD
+    Arena arena = {0};
+    struct {
+        char *data;
+        size_t len, capacity;
+    } cmd = { 0 };
+    da_append_cstr(&arena, cmd, CC CFLAGS);
+    for (size_t i = 0; i < ARRLEN(files); i++) {
+        da_append_cstr(&arena, cmd, " ");
+        da_append_string(&arena, cmd, files[i]);
+    }
+    da_append_cstr(&arena, cmd, " -o "TARGET);
+    da_append(&arena, cmd, 0);
+    printf("$ %s\n", cmd.data);
+    system(cmd.data);
+    arena_destroy(&arena);
+#else
     for (size_t i = 0; i < ARRLEN(files); i++) {
         if (build_c(files[i]))
             return -1;
     }
     link_(files, ARRLEN(files));
+#endif
     if (run || gen_test) {
         if (create_dir(".build/examples")) return -1;
         printf("\n\n");

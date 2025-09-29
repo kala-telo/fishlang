@@ -59,6 +59,8 @@ static inline void* arena_realloc(Arena *arena, void *ptr, size_t old_size, size
     return new_ptr;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wfree-nonheap-object"
 static inline void arena_destroy(Arena *arena) {
     if (arena == NULL) return;
     arena_destroy(arena->next);
@@ -67,5 +69,6 @@ static inline void arena_destroy(Arena *arena) {
     if (arena->meta.arena_heap_allocated)
         free(arena);
 }
+#pragma GCC diagnostic pop
 
 #endif

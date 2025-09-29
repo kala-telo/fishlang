@@ -56,10 +56,10 @@ void codegen_powerpc(IR ir, FILE *output) {
                 assert(call_count < 8);
                 break;
             case TAC_CALL_PUSH_INT:
-                if (x <= 0xFFFF) {
+                if (inst.x <= 0xFFFF) {
                     fprintf(output, "    li %d, %d\n", (call_count++)+call_base, inst.x);
                 } else {
-                    fprintf(output, "    li %d, %d\n", call_count+call_base, inst.x & 0xFFFF);
+                    fprintf(output, "    lis %d, %d\n", call_count+call_base, inst.x & 0xFFFF);
                     fprintf(output, "    ori %d, %d\n", (call_count++)+call_base, inst.x >> 16);
                 }
                 assert(call_count < 8);
@@ -83,10 +83,10 @@ void codegen_powerpc(IR ir, FILE *output) {
                 break;
             case TAC_LOAD_INT:
                 if (!inst.result) break;
-                if (x <= 0xFFFF) {
+                if (inst.x <= 0xFFFF) {
                     fprintf(output, "    li %d, %d\n", r, inst.x);
                 } else {
-                    fprintf(output, "    li %d, %d\n", r, inst.x & 0xFFFF);
+                    fprintf(output, "    lis %d, %d\n", r, inst.x & 0xFFFF);
                     fprintf(output, "    ori %d, %d\n", r, inst.x >> 16);
                 }
                 break;
@@ -153,7 +153,7 @@ void codegen_powerpc(IR ir, FILE *output) {
                 fprintf(output, "    mr 3, %d\n", x);
                 break;
             case TAC_RETURN_INT:
-                if (x <= 0xFFFF) {
+                if (inst.x <= 0xFFFF) {
                     fprintf(output, "    li 3, %d\n", inst.x);
                 } else {
                     fprintf(output, "    li 3, %d\n", inst.x & 0xFFFF);

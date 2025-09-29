@@ -45,6 +45,7 @@ static Arity get_arity(TACOp op) {
     case TAC_NOP:
         return A_NULLARY;
     }
+    UNREACHABLE();
 }
 
 // determines is it safe to optimize out the instruction based on its result
@@ -74,6 +75,7 @@ static bool ispure(TACOp op) {
     case TAC_GOTO:
         return false;
     }
+    UNREACHABLE();
 }
 
 void find_first_last_usage(TAC32Arr tac, int *first, int *last) {

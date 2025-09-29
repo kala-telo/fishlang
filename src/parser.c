@@ -43,7 +43,8 @@ void parse(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) 
     case LEX_OPAREN: {
         Token t = expect(next_token(lex), LEX_NAME);
         if (string_eq(S("fn"), t.str)) {
-            da_append(arena, *arr, ((AST){AST_FUNC, {0}, lex->loc, (*node_id)++, parent}));
+            da_append(arena, *arr,
+                      ((AST){AST_FUNC, {0}, lex->loc, (*node_id)++, parent}));
             AST *func = &da_last(*arr);
             expect(next_token(lex), LEX_OBRAKET);
             while (peek_token(lex).kind != LEX_CBRAKET) {
