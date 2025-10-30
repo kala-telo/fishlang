@@ -282,8 +282,7 @@ Type typecheck(ASTArr ast, TypeTable tt) {
             assert(call_type.type == TYPE_FUNCTION);
             if (call_type.as.func.args.len > node.as.call.args.len)
                 TODO();
-            if (da_last(call_type.as.func.args).type != TYPE_ANY &&
-                call_type.as.func.args.len != node.as.call.args.len) {
+            if (call_type.as.func.args.len != node.as.call.args.len && da_last(call_type.as.func.args).type != TYPE_ANY) {
             }
             for (size_t j = 0; j < node.as.call.args.len; j++) {
                 Type t1 = call_type.as.func.args.data[j],

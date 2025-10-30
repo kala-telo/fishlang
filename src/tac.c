@@ -234,8 +234,8 @@ bool remove_unused(TAC32Arr *tac) {
 bool constant_propagation(TAC32Arr *tac) {
     bool changed = false;
     Arena arena = {0};
-    bool *is_constant =
-        arena_alloc(&arena, sizeof(*is_constant) * count_temps(*tac));
+    if (count_temps(*tac) == 0) return false;
+    bool *is_constant = arena_alloc(&arena, sizeof(*is_constant) * count_temps(*tac));
     struct {
         uint32_t v;
         enum {

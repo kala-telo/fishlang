@@ -19,8 +19,8 @@
 #define UNIT_BUILD
 
 #if DEBUG
-#define CC "gcc "
-#define CFLAGS "-pedantic -std=c99 -fsanitize=address -O2 -D_FORTIFY_SOURCE=3 -g -Wall -Wextra -Wno-missing-braces "
+#define CC "clang "
+#define CFLAGS "-pedantic -std=c99 -O2 -D_FORTIFY_SOURCE=3 -g -Wall -Wextra -Wno-missing-braces -fstack-protector-strong -fstack-clash-protection -fvisibility=hidden -fno-common -fsanitize=address,undefined,cfi -flto "
 #else
 #define CC "cc "
 #define CFLAGS "-static -pedantic -std=c99 -O3 -Wall -Wextra -Wno-missing-braces "

@@ -262,3 +262,4 @@ int main(int argc, char *argv[]) {
     arena_destroy(&arena);
     if (output != stdout) fclose(output);
 }
+

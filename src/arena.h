@@ -22,7 +22,6 @@ struct _Arena {
     Arena *next;
 };
 
-// TODO: padding
 static inline void* arena_alloc(Arena *arena, size_t size) {
     assert(arena != NULL);
 
@@ -40,7 +39,8 @@ static inline void* arena_alloc(Arena *arena, size_t size) {
     //     fprintf(stderr, "Failed to allocate size %zu\n", size);
     //     abort();
     // }
-    arena->allocated += size;
+    uintptr_t padding = (size - (arena->allocated % size)) % size;
+    arena->allocated += size + padding;
     if (arena->allocated > arena->capacity) {
         arena->allocated = arena->capacity;
         arena->next = calloc(1, sizeof(*arena));
