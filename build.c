@@ -18,12 +18,14 @@
 
 #define UNIT_BUILD
 
+#define COMMON_CFLAGS "-pedantic -std=c99 -Wall -Wextra -Wno-missing-braces "
 #if DEBUG
 #define CC "clang "
-#define CFLAGS "-pedantic -std=c99 -O2 -D_FORTIFY_SOURCE=3 -g -Wall -Wextra -Wno-missing-braces -fstack-protector-strong -fstack-clash-protection -fvisibility=hidden -fno-common -fsanitize=address,undefined,cfi -flto "
+#define SANITIZERS "-fsanitize=address,undefined,cfi -flto "
+#define CFLAGS " -O2 -D_FORTIFY_SOURCE=3 -g -fstack-protector-strong -fstack-clash-protection -fvisibility=hidden -fno-common " SANITIZERS
 #else
 #define CC "cc "
-#define CFLAGS "-static -pedantic -std=c99 -O3 -Wall -Wextra -Wno-missing-braces "
+#define CFLAGS "-static -O3 " COMMON_CFLAGS
 #endif
 
 #define LD CC
@@ -131,7 +133,7 @@ char *file2test(String file) {
 
 bool rebuild_myself(void) {
     static char buffer[1000];
-    snprintf(buffer, sizeof(buffer), CC "%s -o ./build", __FILE__);
+    snprintf(buffer, sizeof(buffer), CC "%s -o ./build -DDEBUG=%d", __FILE__, DEBUG);
     printf("$ %s\n", buffer);
     return system(buffer) != 0;
 }
@@ -164,51 +166,6 @@ bool build_c(String path) {
 
     printf("$ %s\n", buffer);
     return system(buffer) != 0;
-}
-int run_pdp8(char *output, FILE **out) {
-    FILE *file_stdout;
-
-    int stdin_pipe[2], stdout_pipe[2];
-    if (pipe(stdin_pipe) || pipe(stdout_pipe)) {
-        return STATUS_BUILD_FAIL;
-    }
-
-    pid_t pdp8_pid = fork();
-    if (pdp8_pid < 0) {
-        return STATUS_BUILD_FAIL;
-    } else if (pdp8_pid == 0) {
-        // Child process
-        dup2(stdin_pipe[0], STDIN_FILENO);
-        dup2(stdout_pipe[1], STDOUT_FILENO);
-        dup2(stdout_pipe[1], STDERR_FILENO);
-
-        close(stdin_pipe[1]);
-        close(stdout_pipe[0]);
-        
-        execlp(runners[TARGET_PDP8], runners[TARGET_PDP8], NULL); // Run emulator
-        exit(1);
-    } else {
-        // Parent process
-        close(stdin_pipe[0]);
-        close(stdout_pipe[1]);
-
-        file_stdout = fdopen(stdout_pipe[0], "r");
-
-        char buffer[1000];
-        snprintf(buffer, sizeof(buffer), "load %s\nrun 200\nquit\n", output);
-        puts(buffer);
-        write(stdin_pipe[1], buffer, strlen(buffer) + 1);
-
-        short n = 0;
-        while (n < 2) {
-            if (getc(file_stdout) == '\n')
-                n++;
-        }
-        
-    }
-
-    *out = file_stdout;
-    return STATUS_OK;
 }
 
 Status run_file(Target target, String file, bool gen_test) {
@@ -287,8 +244,11 @@ Status run_file(Target target, String file, bool gen_test) {
 
                 short n = 0;
                 while (n < 2) {
-                    if (getc(file_stdout) == '\n')
+                    int c = getc(file_stdout);
+                    if (c == '\n')
                         n++;
+                    if (c == EOF)
+                        break;
                 }
                 
             }
