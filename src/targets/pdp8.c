@@ -5,7 +5,8 @@
 #include "../da.h"
 
 #define STDFN_COUNT 2
-#define push_cmd(...) commands.strp += snprintf(commands.strp, sizeof(commands.str), __VA_ARGS__) // Adding a command to the commands buffer
+// Adding a command to the commands buffer
+#define push_cmd(...) commands.strp += snprintf(commands.strp, sizeof(commands.str), __VA_ARGS__)
 
 typedef struct {
     short size;         // Size in 12-bit words

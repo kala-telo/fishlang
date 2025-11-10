@@ -64,19 +64,24 @@ typedef enum {
 } Target;
 
 static const char *const targets[] = {
-    [TARGET_PPC] = "ppc", [TARGET_X86_32] = "x86_32", [TARGET_MIPS] = "mips", [TARGET_PDP8] = "pdp8"};
+    [TARGET_PPC] = "ppc",
+    [TARGET_X86_32] = "x86_32",
+    [TARGET_MIPS] = "mips",
+    [TARGET_PDP8] = "pdp8",
+};
 
 static const char *const target_compiler[] = {
     [TARGET_PPC] = "powerpc-unknown-linux-musl-gcc",
     [TARGET_X86_32] = "i686-pc-linux-musl-gcc",
     [TARGET_MIPS] = "mips-unknown-linux-musl-gcc",
-    [TARGET_PDP8] = "macro8x",
+    [TARGET_PDP8] = ".build/gal",
 };
 static const char *const runners[] = {
     [TARGET_PPC] = "qemu-ppc",
     [TARGET_X86_32] = "qemu-i386",
     [TARGET_MIPS] = "qemu-mips",
-    [TARGET_PDP8] = "pdp8",             // simh version should be >= 4.0, otherwise there will be a segfault
+    [TARGET_PDP8] = "pdp8", // simh version should be >= 4.0, otherwise there
+                            // will be a segfault
 };
 
 static bool endswith(String str, String suf) {
@@ -179,13 +184,8 @@ Status run_file(Target target, String file, bool gen_test) {
     }
     snprintf(output, sizeof(output), ".build/examples/%.*s-%s", file.length - 4,
              file.string, targets[target]);
-    if (target == TARGET_PDP8) {
-        snprintf(buffer, sizeof(buffer), "%s %s && mv .build/examples/%.*s.bin %s && rm -f .build/examples/%.*s.lst",
-                 target_compiler[target], asm_path, file.length - 4, file.string, output, file.length - 4, file.string);
-    } else {
-        snprintf(buffer, sizeof(buffer), "%s -static %s -o %s",
-                 target_compiler[target], asm_path, output);
-    }
+    snprintf(buffer, sizeof(buffer), "%s -static %s -o %s",
+             target_compiler[target], asm_path, output);
     
     if (system(buffer) != 0) {
         return STATUS_BUILD_FAIL;
@@ -358,6 +358,12 @@ exit:
     return false;
 }
 
+bool build_gal(void) {
+    char *command = "cc 2nd_party/gal.c -o .build/gal";
+    printf("$ %s\n", command);
+    return system(command) != 0;
+}
+
 void usage(char *program) {
     printf("%s [-h] [run] [gen-test]\n", program);
 }
@@ -388,6 +394,8 @@ int main(int argc, char *argv[]) {
         return -1;
     if (create_gitignore(".build/.gitignore"))
         return -1;
+    if (build_gal())
+        return -1;
 
     String files[] = {
         S("src/codegen.c"),
@@ -417,7 +425,8 @@ int main(int argc, char *argv[]) {
     da_append_cstr(&arena, cmd, " -o "TARGET);
     da_append(&arena, cmd, 0);
     printf("$ %s\n", cmd.data);
-    system(cmd.data);
+    if (system(cmd.data) != 0)
+        return -1;
     arena_destroy(&arena);
 #else
     for (size_t i = 0; i < ARRLEN(files); i++) {

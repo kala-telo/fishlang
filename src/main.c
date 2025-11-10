@@ -205,7 +205,7 @@ void usage(FILE *out, const char *const program) {
     fprintf(out, "\t\t\tdebug\thuman-readable pseudocode\n");
     fprintf(out, "\t\t\tast\tpure ast dump in graphviz format\n");
     fprintf(out, "\t-h\tShows this help message\n");
-    fprintf(out, "\t-o\tSpecifies the output file, the default one stdout\n");
+    fprintf(out, "\t-o\tSpecifies the output file, the default one is stdout\n");
 }
 
 int main(int argc, char *argv[]) {
