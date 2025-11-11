@@ -23,6 +23,7 @@ static Arity get_arity(TACOp op) {
     case TAC_ADD:
     case TAC_SUB:
     case TAC_LT:
+    case TAC_PHI:
         return A_BINARY;
     case TAC_CALL_REG:
     case TAC_CALL_PUSH:
@@ -43,9 +44,11 @@ static Arity get_arity(TACOp op) {
     case TAC_LABEL:
     case TAC_GOTO:
     case TAC_NOP:
+    case TAC_EXIT:
         return A_NULLARY;
     }
     UNREACHABLE();
+    return false;
 }
 
 // determines is it safe to optimize out the instruction based on its result
@@ -62,6 +65,7 @@ static bool ispure(TACOp op) {
     case TAC_LOAD_ARG:
     case TAC_LOAD_SYM:
     case TAC_LTI:
+    case TAC_PHI:
         return true;
     case TAC_CALL_REG:
     case TAC_CALL_PUSH:
@@ -73,9 +77,43 @@ static bool ispure(TACOp op) {
     case TAC_LABEL:
     case TAC_RETURN_INT:
     case TAC_GOTO:
+    case TAC_EXIT:
         return false;
     }
     UNREACHABLE();
+    return false;
+}
+
+static bool is_set_ret(TACOp op) {
+    switch (op) {
+    case TAC_ADD:
+    case TAC_SUB:
+    case TAC_LT:
+    case TAC_MOV:
+    case TAC_ADDI:
+    case TAC_SUBI:
+    case TAC_NOP:
+    case TAC_LOAD_INT:
+    case TAC_LOAD_ARG:
+    case TAC_LOAD_SYM:
+    case TAC_LTI:
+    case TAC_CALL_REG:
+    case TAC_CALL_PUSH:
+    case TAC_BIZ:
+    case TAC_CALL_PUSH_INT:
+    case TAC_CALL_PUSH_SYM:
+    case TAC_CALL_SYM:
+    case TAC_LABEL:
+    case TAC_GOTO:
+    case TAC_EXIT:
+    case TAC_PHI:
+        return false;
+    case TAC_RETURN_VAL:
+    case TAC_RETURN_INT:
+        return true;
+    }
+    UNREACHABLE();
+    return false;
 }
 
 void find_first_last_usage(TAC32Arr tac, int *first, int *last) {
@@ -279,6 +317,8 @@ bool constant_propagation(TAC32Arr *tac) {
         case TAC_RETURN_INT:
         case TAC_RETURN_VAL:
         case TAC_GOTO:
+        case TAC_EXIT:
+        case TAC_PHI:
             break;
         }
         switch (inst->function) {
@@ -339,6 +379,20 @@ bool constant_propagation(TAC32Arr *tac) {
                 changed = true;
             }
             break;
+        case TAC_MOV:
+            if (is_constant[inst->x]) {
+                switch (constant_value[inst->x].kind) {
+                case INT:
+                    inst->function = TAC_LOAD_INT;
+                    break;
+                case SYM:
+                    inst->function = TAC_LOAD_SYM;
+                    break;
+                }
+                inst->x = constant_value[inst->x].v;
+                changed = true;
+            }
+            break;
         case TAC_RETURN_VAL:
             if (!is_constant[inst->x]) break;
             switch (constant_value[inst->x].kind) {
@@ -358,6 +412,113 @@ bool constant_propagation(TAC32Arr *tac) {
     }
     arena_destroy(&arena);
     return changed;
+}
+
+static void insert_instruction(Arena *arena, TAC32Arr *tac, size_t index, TAC32 inst) {
+    da_append_empty(arena, *tac);
+    size_t i = tac->len-1;
+    while (i-- > index) {
+        tac->data[i+1] = tac->data[i];
+    }
+    tac->data[index] = inst;
+}
+
+bool return_lifting(Arena *arena, TAC32Arr *tac) {
+    if (tac->len < 3) return false;
+    size_t last = tac->len-1;
+    if (!is_set_ret(tac->data[last].function))
+        return false;
+    if (tac->data[last-1].function != TAC_PHI) 
+        return false;
+    if (tac->data[last-2].function != TAC_LABEL) 
+        return false;
+    uint32_t label = tac->data[last-2].x;
+    TAC32 ret = tac->data[last];
+    TAC32 phi = tac->data[last-1];
+    remove_instruction(tac, last-2);
+    for (size_t i = 0; i < tac->len; i++) {
+        if (tac->data[i].function != TAC_GOTO)
+            continue;
+        if (tac->data[i].x != label)
+            continue;
+        // TAC32 prev_inst = tac->data[i-1];
+        // if (prev_inst.result == phi.x) {
+        //     ret.x = phi.x;
+        //     phi2 = phi.y;
+        // } else if (prev_inst.result == phi.y) {
+        //     ret.x = phi.y;
+        //     phi2 = phi.x;
+        // } else continue;
+        for (size_t j = i; j --> 0; ) {
+            TAC32 *inst = &tac->data[j];
+            if (inst->result == phi.x) {
+                insert_instruction(arena, tac, j+1, (TAC32){phi.result, TAC_MOV, phi.x, 0});
+                i++;
+            } else if (inst->result == phi.y) {
+                insert_instruction(arena, tac, j+1, (TAC32){phi.result, TAC_MOV, phi.y, 0});
+                i++;
+            }
+        }
+        tac->data[i] = ret;
+        insert_instruction(arena, tac, i+1, (TAC32){0, TAC_EXIT, 0, 0});
+    }
+    // ret.x = phi.result;
+    insert_instruction(arena, tac, tac->len-2, ret);
+    insert_instruction(arena, tac, tac->len-2, (TAC32){0, TAC_EXIT, 0, 0});
+
+    // removing old ret
+    tac->len -= 1;
+
+    return true;
+}
+
+void remove_phi(Arena *arena, TAC32Arr *tac) {
+    TAC32 phi;
+    do {
+        phi.function = TAC_NOP;
+        for (size_t i = tac->len; i-- > 0; ) {
+            TAC32 *inst = &tac->data[i];
+            if (phi.function == TAC_NOP) {
+                if (inst->function == TAC_PHI) {
+                    phi = *inst;
+                    inst->function = TAC_NOP;
+                }
+                continue;
+            }
+            if (inst->result == phi.x) {
+                insert_instruction(arena, tac, i+1, (TAC32){phi.result, TAC_MOV, phi.x, 0});
+            } else if (inst->result == phi.y) {
+                insert_instruction(arena, tac, i+1, (TAC32){phi.result, TAC_MOV, phi.y, 0});
+            }
+        }
+    } while (phi.function != TAC_NOP);
+    remove_nops(tac);
+}
+
+void try_tail_call_optimization(Arena *arena, StaticFunction *func, String *names) {
+    (void)arena;
+    (void)func;
+    (void)names;
+    // assert(func->code.capacity > func->code.len);
+    // TAC32 inst = func->code.data[func->code.len-1];
+    // if (inst.function != TAC_CALL_SYM ||
+    //     !string_eq(names[inst.x], names[func->name])) {
+    //     return;
+    // }
+    // uint32_t *addr = NULL;
+    // da_append(arena, func->code, ((TAC32){0, TAC_GOTO, 0, 0}));
+    // addr = &da_last(func->code).x;
+    // size_t i = func->code.len-1;
+    // uint32_t label_id = 0;
+    // while (i-- > 1) {
+    //     func->code.data[i] = func->code.data[i-1];
+    //     if (func->code.data[i].function == TAC_LABEL &&
+    //         func->code.data[i].x > label_id) {
+    //         label_id = func->code.data[i].x;
+    //     }
+    // }
+    // func->code.data[0] = (TAC32){0, TAC_LABEL, label_id, 0};
+    // *addr = label_id;
 }
 
 bool peephole_optimization(TAC32Arr *tac) {

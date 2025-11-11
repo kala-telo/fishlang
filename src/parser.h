@@ -41,6 +41,7 @@ struct _AST {
             } args;
             ASTArr ret;
             ASTArr body;
+            bool ret_type_void;
         } func;
         struct { // AST_CALL
             String callee;

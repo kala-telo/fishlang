@@ -728,6 +728,12 @@ void codegen_pdp8(IR ir, FILE *output) {
                     push_cmd("\tDCA I TMP2\n");
                 }
                 break;
+            case TAC_EXIT:
+                TODO();
+                break;
+            case TAC_PHI:
+                UNREACHABLE();
+                break;
             case TAC_NOP:
                 break;
             }

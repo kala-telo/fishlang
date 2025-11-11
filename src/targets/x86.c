@@ -58,10 +58,9 @@ void codegen_x86_32(IR ir, FILE *output) {
     for (size_t i = 0; i < ir.functions.len; i++) {
         uint16_t temps_count = ir.functions.data[i].temps_count;
         assert(temps_count <= ARRLEN(reg_names));
-        fprintf(output, ".global %.*s\n",
-                PS(ir.symbols.data[ir.functions.data[i].name]));
-        fprintf(output, "%.*s:\n",
-                PS(ir.symbols.data[ir.functions.data[i].name]));
+        String func_name = ir.symbols.data[ir.functions.data[i].name];
+        fprintf(output, ".global %.*s\n", PS(func_name));
+        fprintf(output, "%.*s:\n", PS(func_name));
         TAC32Arr func = ir.functions.data[i].code;
         fprintf(output, "    subl $%d, %%esp\n", temps_count*4);
         for (size_t j = 0; j < MIN(temps_count, ARRLEN(reg_names)); j++) {
@@ -143,14 +142,14 @@ void codegen_x86_32(IR ir, FILE *output) {
                 fprintf(output, "    subl $%d, %s\n", inst.y, reg_names[r]);
                 break;
             case TAC_LABEL:
-                fprintf(output, ".label_%d:\n", inst.x);
+                fprintf(output, "    %.*s.label_%d:\n", PS(func_name), inst.x);
                 break;
             case TAC_GOTO:
-                fprintf(output, "    jmp .label_%d\n", inst.x);
+                fprintf(output, "    jmp %.*s.label_%d\n", PS(func_name), inst.x);
                 break;
             case TAC_BIZ:
                 fprintf(output, "    cmpl $0, %s\n", reg_names[x]);
-                fprintf(output, "    jz .label_%d\n", inst.y);
+                fprintf(output, "    jz %.*s.label_%d\n", PS(func_name), inst.y);
                 break;
             case TAC_LT:
                 fprintf(output, "    cmpl %s, %s\n", reg_names[y], reg_names[x]);
@@ -162,12 +161,19 @@ void codegen_x86_32(IR ir, FILE *output) {
                 fprintf(output, "    setl %%al\n");
                 fprintf(output, "    movzx %%al, %s\n", reg_names[r]);
                 break;
+            case TAC_EXIT:
+                fprintf(output, "    jmp %.*s.epilogue\n", PS(func_name));
+                break;
+            case TAC_PHI:
+                UNREACHABLE();
+                break;
             case TAC_NOP:
                 break;
             }
         }
         arena_destroy(&arena);
         fprintf(output, "\n");
+        fprintf(output, "    %.*s.epilogue:\n", PS(func_name));
         for (size_t j = 0; j < temps_count; j++) {
             fprintf(output, "    mov %zu(%%esp), %s\n", j*4, reg_names[j]);
         }

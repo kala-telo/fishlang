@@ -162,14 +162,18 @@ void compile(Target target, const char *const file_name, FILE *input,
     CodeGenCTX cg_ctx = { 0 };
     IR ir = codegen(&arena, body, &cg_ctx);
     for (size_t i = 0; i < ir.functions.len; i++) {
+        StaticFunction *func = &ir.functions.data[i];
         bool repeat;
         do {
-            repeat = peephole_optimization(&ir.functions.data[i].code);
-            repeat |= remove_unused(&ir.functions.data[i].code);
-            repeat |= constant_propagation(&ir.functions.data[i].code);
+            repeat = peephole_optimization(&func->code);
+            repeat |= remove_unused(&func->code);
+            repeat |= constant_propagation(&func->code);
+            repeat |= return_lifting(&arena, &func->code);
         } while (repeat);
-        ir.functions.data[i].temps_count =
-            fold_temporaries(ir.functions.data[i].code);
+
+        // try_tail_call_optimization(&arena, func, ir.symbols.data);
+        remove_phi(&arena, &func->code);
+        func->temps_count = fold_temporaries(func->code);
     }
     switch (target) {
     case TARGET_DEBUG:

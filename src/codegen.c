@@ -108,12 +108,19 @@ IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
                 da_append(arena, ctx->current_function->code,
                           ((TAC32){++ctx->temp_num, TAC_SUB, x, y}));
                 da_append(arena, ctx->args_stack, ctx->temp_num);
-            } else if (string_eq(node.as.call.callee, S("<"))) {
+            } else if (string_eq(node.as.call.callee, S("<")) || string_eq(node.as.call.callee, S(">"))) {
                 codegen(arena, node.as.call.args, ctx);
                 if (node.as.call.args.len != 2)
                     TODO();
-                uint16_t y = da_pop(ctx->args_stack);
-                uint16_t x = da_pop(ctx->args_stack);
+                uint16_t y;
+                uint16_t x;
+                if (string_eq(node.as.call.callee, S("<"))) {
+                    y = da_pop(ctx->args_stack);
+                    x = da_pop(ctx->args_stack);
+                } else {
+                    x = da_pop(ctx->args_stack);
+                    y = da_pop(ctx->args_stack);
+                }
                 da_append(arena, ctx->current_function->code,
                           ((TAC32){++ctx->temp_num, TAC_LT, x, y}));
                 da_append(arena, ctx->args_stack, ctx->temp_num);
@@ -134,8 +141,6 @@ IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
                 codegen(arena, (ASTArr){&node.as.call.args.data[1], 1, 0}, ctx);
                 uint32_t result_1 = da_pop(ctx->args_stack);
                 da_append(arena, ctx->current_function->code,
-                          ((TAC32){result, TAC_MOV, result_1, 0}));
-                da_append(arena, ctx->current_function->code,
                           ((TAC32){0, TAC_GOTO, branch_exit, 0}));
 
                 // false
@@ -143,12 +148,12 @@ IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
                           ((TAC32){0, TAC_LABEL, branch_false, 0}));
                 codegen(arena, (ASTArr){&node.as.call.args.data[2], 1, 0}, ctx);
                 uint32_t result_2 = da_pop(ctx->args_stack);
-                da_append(arena, ctx->current_function->code,
-                          ((TAC32){result, TAC_MOV, result_2, 0}));
 
                 // epilouege
                 da_append(arena, ctx->current_function->code,
                           ((TAC32){0, TAC_LABEL, branch_exit, 0}));
+                da_append(arena, ctx->current_function->code,
+                          ((TAC32){result, TAC_PHI, result_1, result_2}));
                 da_append(arena, ctx->args_stack, result);
             } else {
                 codegen(arena, node.as.call.args, ctx);
@@ -165,7 +170,10 @@ IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
                 hms_get(f, ctx->global_symbols, node.as.call.callee, found);
                 if (!found) {
                     hms_get(f, ctx->variables, node.as.call.callee, found);
-                    assert(found);
+                    if (!found) {
+                        fprintf(stderr, "%.*s\n", PS(node.as.call.callee));
+                        TODO();
+                    }
                     da_append(arena, ctx->current_function->code,
                               ((TAC32){++ctx->temp_num, TAC_CALL_REG,
                                        (uint32_t)f, 0}));
@@ -199,8 +207,9 @@ IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
             for (size_t j = 0; j < node.as.func.args.len; j++) {
                 hms_rem(ctx->variables, node.as.func.args.data[j].name);
             }
-            da_append(arena, ctx->current_function->code,
-                      ((TAC32){0, TAC_RETURN_VAL, da_pop(ctx->args_stack), 0}));
+            if (!node.as.func.ret_type_void)
+                da_append(arena, ctx->current_function->code,
+                          ((TAC32){0, TAC_RETURN_VAL, da_pop(ctx->args_stack), 0}));
             ctx->current_function = prev_func;
             // assert(ctx->args_stack.len == 0);
         } break;

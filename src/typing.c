@@ -2,6 +2,7 @@
 
 #include "da.h"
 #include "parser.h"
+#include "string.h"
 #include "todo.h"
 #include "typing.h"
 
@@ -220,6 +221,8 @@ Type typecheck(ASTArr ast, TypeTable tt) {
             break;
         case AST_FUNC: {
             Type return_type = typecheck(node.as.func.body, tt);
+            if (return_type.type == TYPE_VOID)
+                ast.data[i].as.func.ret_type_void = true;
             Type expected_type = extract_types(NULL, node.as.func.ret, NULL);
             if (!types_match(return_type, expected_type) && expected_type.type != TYPE_VOID) {
                 fprintf(stderr, "%s:%d:%d -- ", PLOC(da_last(node.as.func.body).loc));

@@ -1,11 +1,16 @@
 #include <stdint.h>
 
 #include "arena.h"
+#include "string.h"
 
 #ifndef TAC_H
 #define TAC_H
 
 typedef enum {
+    TAC_NOP,
+
+    TAC_PHI,
+
     TAC_LOAD_ARG,
     TAC_LOAD_SYM,
     TAC_LOAD_INT,
@@ -17,7 +22,11 @@ typedef enum {
     TAC_CALL_REG,
     TAC_CALL_SYM,
 
+    // exit returns out of the function
+    TAC_EXIT,
+    // return_val sets return value to register
     TAC_RETURN_VAL,
+    // return_val sets return value to immediate
     TAC_RETURN_INT,
 
     TAC_MOV,
@@ -34,8 +43,6 @@ typedef enum {
     TAC_LABEL,
     TAC_GOTO,
     TAC_BIZ,
-
-    TAC_NOP,
 } TACOp;
 
 typedef struct {
@@ -49,9 +56,20 @@ typedef struct {
     size_t len, capacity;
 } TAC32Arr;
 
+typedef struct {
+    // index in symbols array
+    size_t name;
+    TAC32Arr code;
+    uint16_t temps_count;
+} StaticFunction;
+
 uint16_t fold_temporaries(TAC32Arr tac);
 bool peephole_optimization(TAC32Arr *tac);
 bool constant_propagation(TAC32Arr *tac);
 bool remove_unused(TAC32Arr *tac);
 
+void try_tail_call_optimization(Arena *arena, StaticFunction *func,
+                                String *names);
+bool return_lifting(Arena *arena, TAC32Arr *tac);
+void remove_phi(Arena *arena, TAC32Arr *tac);
 #endif // TAC_H

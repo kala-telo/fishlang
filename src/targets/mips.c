@@ -17,13 +17,12 @@ void codegen_mips(IR ir, FILE *output) {
         // 7 is the amount of saved registers on mips
         if (ir.functions.data[i].temps_count > 7)
             TODO();
+        String func_name = ir.symbols.data[ir.functions.data[i].name];
         size_t temps_count = ir.functions.data[i].temps_count;
         // +1 for return address
         int frame = ALIGN(4*temps_count+1, 32);
-        fprintf(output, ".global %.*s\n",
-                PS(ir.symbols.data[ir.functions.data[i].name]));
-        fprintf(output, "%.*s:\n",
-                PS(ir.symbols.data[ir.functions.data[i].name]));
+        fprintf(output, ".global %.*s\n", PS(func_name));
+        fprintf(output, "%.*s:\n", PS(func_name));
         fprintf(output, "    addiu $sp, $sp, -%d\n", frame);
         fprintf(output, "    sw $31, 28($sp)\n");
         for (size_t j = 0; j < temps_count; j++) {
@@ -129,14 +128,14 @@ void codegen_mips(IR ir, FILE *output) {
                 fprintf(output, "    addi $%d, $%d, -%d\n", r, x, inst.y);
                 break;
             case TAC_LABEL:
-                fprintf(output, ".label%d:\n", inst.x);
+                fprintf(output, "    %.*s.label%d:\n", PS(func_name), inst.x);
                 break;
             case TAC_GOTO:
-                fprintf(output, "    j .label%d\n", inst.x);
+                fprintf(output, "    j %.*s.label%d\n", PS(func_name), inst.x);
                 fprintf(output, "    nop\n");
                 break;
             case TAC_BIZ:
-                fprintf(output, "    beqz $%d, .label%d\n", x, inst.y);
+                fprintf(output, "    beqz $%d, %.*s.label%d\n", x, PS(func_name), inst.y);
                 fprintf(output, "    nop\n");
                 break;
             case TAC_LT:
@@ -145,12 +144,20 @@ void codegen_mips(IR ir, FILE *output) {
             case TAC_LTI:
                 fprintf(output, "    slti $%d, $%d, %d\n", r, x, inst.y);
                 break;
+            case TAC_EXIT:
+                fprintf(output, "    j %.*s.epilogue\n", PS(func_name));
+                fprintf(output, "    nop\n");
+                break;
+            case TAC_PHI:
+                UNREACHABLE();
+                break;
             case TAC_NOP:
                 TODO();
                 break;
             }
         }
         fprintf(output, "\n");
+        fprintf(output, "    %.*s.epilogue:\n", PS(func_name));
         for (size_t j = 0; j < temps_count; j++) {
             fprintf(output, "    lw $%zu, %zu($sp)\n", j+gpr_base, (frame-(j+2)*4));
         }

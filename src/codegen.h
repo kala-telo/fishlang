@@ -18,13 +18,6 @@ typedef struct {
 } StaticVariable;
 
 typedef struct {
-    // index in symbols array
-    size_t name;
-    TAC32Arr code;
-    uint16_t temps_count;
-} StaticFunction;
-
-typedef struct {
     struct {
         struct {
             String key;

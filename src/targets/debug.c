@@ -94,6 +94,12 @@ void codegen_debug(IR ir, FILE *output) {
             case TAC_RETURN_INT:
                 fprintf(output, "    ret = %d\n", inst.x);
                 break;
+            case TAC_EXIT:
+                fprintf(output, "    return\n");
+                break;
+            case TAC_PHI:
+                fprintf(output, "    r%d = phi(r%d, r%d)\n", r, x, y);
+                break;
             case TAC_NOP:
                 // i had to debug it so it's helpful
                 fprintf(output, "    nop\n");

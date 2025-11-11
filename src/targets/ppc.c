@@ -16,10 +16,9 @@ void codegen_powerpc(IR ir, FILE *output) {
         // 19 is the amount of nonvolatile registers on powerpc
         if (ir.functions.data[i].temps_count > 18)
             TODO();
-        fprintf(output, ".global %.*s\n",
-                PS(ir.symbols.data[ir.functions.data[i].name]));
-        fprintf(output, "%.*s:\n",
-                PS(ir.symbols.data[ir.functions.data[i].name]));
+        String func_name = ir.symbols.data[ir.functions.data[i].name];
+        fprintf(output, ".global %.*s\n", PS(func_name));
+        fprintf(output, "%.*s:\n", PS(func_name));
         int call_count = 0;
         int stack_frame = 16 + 4 * ir.functions.data[i].temps_count;
         if (stack_frame % 16 != 0)
@@ -140,14 +139,14 @@ void codegen_powerpc(IR ir, FILE *output) {
                 fprintf(output, "    rlwinm %d, %d, 1, 31, 31\n", r, r);
                 break;
             case TAC_LABEL:
-                fprintf(output, ".label%d:\n", inst.x);
+                fprintf(output, "    %.*s.label%d:\n", PS(func_name), inst.x);
                 break;
             case TAC_GOTO:
-                fprintf(output, "    b .label%d\n", inst.x);
+                fprintf(output, "    b %.*s.label%d\n", PS(func_name), inst.x);
                 break;
             case TAC_BIZ:
                 fprintf(output, "    cmpwi %d, 0\n", x);
-                fprintf(output, "    beq .label%d\n", inst.y);
+                fprintf(output, "    beq %.*s.label%d\n", PS(func_name), inst.y);
                 break;
             case TAC_RETURN_VAL:
                 fprintf(output, "    mr 3, %d\n", x);
@@ -160,11 +159,18 @@ void codegen_powerpc(IR ir, FILE *output) {
                     fprintf(output, "    ori 3, %d\n", inst.x >> 16);
                 }
                 break;
+            case TAC_EXIT:
+                fprintf(output, "    b %.*s.epilogue\n", PS(func_name));
+                break;
+            case TAC_PHI:
+                UNREACHABLE();
+                break;
             case TAC_NOP:
                 break;
             }
         }
         fprintf(output, "\n");
+        fprintf(output, "    %.*s.epilogue:\n", PS(func_name));
         for (int j = 0; j < ir.functions.data[i].temps_count; j++) {
             fprintf(output, "    lwz %d, %d(1)\n", j + gpr_base,
                     stack_frame - j * 4);
