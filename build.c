@@ -20,12 +20,16 @@
 
 #define COMMON_CFLAGS "-pedantic -std=c99 -Wall -Wextra -Wno-missing-braces "
 #if DEBUG
-#define CC "clang "
-#define SANITIZERS "-fsanitize=address,undefined,cfi -flto "
-#define CFLAGS " -O2 -D_FORTIFY_SOURCE=3 -g -fstack-protector-strong -fstack-clash-protection -fvisibility=hidden -fno-common " SANITIZERS
+#   define CC "clang "
+#   define SANITIZERS "-fsanitize=address,undefined,cfi -flto "
+#   ifndef CFLAGS
+#       define CFLAGS " -O2 -D_FORTIFY_SOURCE=3 -g -fstack-protector-strong -fstack-clash-protection -fvisibility=hidden -fno-common " SANITIZERS
+#   endif
 #else
-#define CC "cc "
-#define CFLAGS "-static -O3 " COMMON_CFLAGS
+#   define CC "cc "
+#   ifndef CFLAGS
+#       define CFLAGS "-static -O3 " COMMON_CFLAGS
+#   endif
 #endif
 
 #define LD CC
