@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "codegen.h"
 #include "lexer.h"
@@ -96,7 +97,7 @@ void dump_ast(ASTArr ast, FILE* out) {
             fprintf(out, "    %zu [label=\"name (%.*s)\"];\n", node.id, PS(node.as.name));
             break;
         case AST_NUMBER:
-            fprintf(out, "    %zu [label=\"number (%ld)\"];\n", node.id, node.as.number);
+            fprintf(out, "    %zu [label=\"number (%"PRIu64")\"];\n", node.id, node.as.number);
             break;
         case AST_STRING:
             fprintf(out, "    %zu [label=\"string ('", node.id);
@@ -225,9 +226,17 @@ int main(int argc, char *argv[]) {
         char *arg = next_arg(&argc, &argv, NULL);
         if (strcmp(arg, "-t") == 0) {
             char *target_str = next_arg(&argc, &argv, "Argument `-t` expects target name next, see -h for list");
+            bool found = false;
             for (size_t i = 0; i < ARRLEN(target_names); i++) {
-                if (strcmp(target_str, target_names[i]) == 0)
+                if (strcmp(target_str, target_names[i]) == 0) {
                     target = i;
+                    found = true;
+                }
+            }
+            if (!found) {
+                fprintf(stderr, "Unknown target `%s`\n", target_str);
+                arena_destroy(&arena);
+                return 1;
             }
         } else if (strcmp(arg, "-o") == 0) {
             if (output != stdout) {
