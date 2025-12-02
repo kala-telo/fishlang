@@ -14,7 +14,8 @@
 // like questionable choice but we'll see
 static uint8_t used_temp_registers = 0;
 static uint32_t register_map[MAX_TEMP_REGISTERS] = {0};
-uint32_t access_register(FILE *output, uint32_t stack_frame, uint32_t reg, bool call) {
+uint32_t access_register(FILE *output, uint32_t stack_frame, uint32_t reg,
+                         bool call) {
     const int call_base = 3;
     const int gpr_base = 14;
     if (call) {
@@ -28,24 +29,21 @@ uint32_t access_register(FILE *output, uint32_t stack_frame, uint32_t reg, bool 
         return reg + gpr_base - 1;
 
     assert(used_temp_registers+1 < MAX_TEMP_REGISTERS);
-    // 13th registers says to be reserved under 64 bit
-    // envirourment, but i guess it is free to use under 32bit?
-    // after that there is "pascal" register and func call
-    // arguments
+    // 10th register is the last call register
     // it might break if code loads things into temp registers
     // before calling, needs testing
     register_map[used_temp_registers] = reg;
-    uint32_t hardware_register = 13-(used_temp_registers++);
-    fprintf(output, "    stwu %d,%d(1)\n",
+    uint32_t hardware_register = 10-(used_temp_registers++);
+    fprintf(output, "    lwz %d,%d(1)\n",
             hardware_register,
-            stack_frame-(reg*4));
+            stack_frame-reg*4);
     return hardware_register;
 }
 
 void free_temp_registers(FILE* output, uint32_t stack_frame) {
     for (uint8_t i = 0; i < used_temp_registers; i++) {
-        uint32_t hardware_register = 13-i;
-        fprintf(output, "    lwzu %d,%d(1)\n",
+        uint32_t hardware_register = 10-i;
+        fprintf(output, "    stw %d,%d(1)\n",
                 hardware_register,
                 stack_frame-register_map[i]*4);
     }
@@ -71,10 +69,11 @@ void codegen_powerpc(IR ir, FILE *output) {
         fprintf(output, "    stwu 1,-%d(1)\n", stack_frame);
         fprintf(output, "    mflr 0\n");
         fprintf(output, "    stw 0, %d(1)\n", stack_frame + 4);
-        for (int j = 0; j < MIN(ir.functions.data[i].temps_count, 18); j++) {
+        int real_registers = MIN(ir.functions.data[i].temps_count, 18);
+        for (int j = 0; j < real_registers; j++) {
             fprintf(output, "    stw %d, %d(1)\n",
                     access_register(output, stack_frame, j, false),
-                    stack_frame - j * 4);
+                    (real_registers - j) * 4);
         }
         fprintf(output, "\n");
         for (size_t j = 0; j < func.len; j++) {
@@ -224,10 +223,10 @@ void codegen_powerpc(IR ir, FILE *output) {
         }
         fprintf(output, "\n");
         fprintf(output, "    %.*s.epilogue:\n", PS(func_name));
-        for (int j = 0; j < MIN(ir.functions.data[i].temps_count, 18); j++) {
+        for (int j = 0; j < real_registers; j++) {
             fprintf(output, "    lwz %d, %d(1)\n",
                     access_register(output, stack_frame, j, false),
-                    stack_frame - j * 4);
+                    (real_registers - j) * 4);
         }
         fprintf(output, "    lwz 0, %d(1)\n", stack_frame + 4);
         fprintf(output, "    mtlr 0\n");
