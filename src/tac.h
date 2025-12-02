@@ -7,6 +7,12 @@
 #define TAC_H
 
 typedef enum {
+    A_NULLARY,
+    A_UNARY,
+    A_BINARY,
+} Arity;
+
+typedef enum {
     TAC_NOP,
 
     TAC_PHI,
@@ -62,6 +68,8 @@ typedef struct {
     TAC32Arr code;
     uint16_t temps_count;
 } StaticFunction;
+
+Arity get_arity(TACOp op);
 
 uint16_t fold_temporaries(TAC32Arr tac);
 bool peephole_optimization(TAC32Arr *tac);

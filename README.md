@@ -19,7 +19,7 @@ compiler development to me. <br>
 - [x] PDP-8
 - [ ] ARM
 - [ ] RISC-V
-- ..?
+- [ ] ..?
 # Getting started
 ```shell
 $ cc build.c -o build && ./build run

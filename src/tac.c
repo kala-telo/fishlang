@@ -12,13 +12,7 @@ static bool ranges_intersect(int f1, int t1, int f2, int t2) {
     return !(t1 < f2 || t2 < f1);
 }
 
-typedef enum {
-    A_NULLARY,
-    A_UNARY,
-    A_BINARY,
-} Arity;
-
-static Arity get_arity(TACOp op) {
+Arity get_arity(TACOp op) {
     switch (op) {
     case TAC_ADD:
     case TAC_SUB:

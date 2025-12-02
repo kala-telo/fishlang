@@ -81,7 +81,16 @@ static const char *const target_compiler[] = {
     [TARGET_PDP8] = ".build/gal",
 };
 static const char *const runners[] = {
+    // while you probably still should
+    // test in a VM, since it is more
+    // standartized, i don't feel like
+    // compiling qemu for my powerpc
+    // laptop
+#ifndef __powerpc__
     [TARGET_PPC] = "qemu-ppc",
+#else
+    [TARGET_PPC] = "",
+#endif
     [TARGET_X86_32] = "qemu-i386",
     [TARGET_MIPS] = "qemu-mips",
     [TARGET_PDP8] = "pdp8", // simh version should be >= 4.0, otherwise there
@@ -142,7 +151,11 @@ char *file2test(String file) {
 
 bool rebuild_myself(void) {
     static char buffer[1000];
-    snprintf(buffer, sizeof(buffer), CC "%s -o ./build -DDEBUG=%d", __FILE__, DEBUG);
+    snprintf(buffer, sizeof(buffer),
+        CC "%s -o ./build "
+        "-DDEBUG=%d "
+        "-DCFLAGS='\"%s\"'",
+        __FILE__, DEBUG, CFLAGS);
     printf("$ %s\n", buffer);
     return system(buffer) != 0;
 }
