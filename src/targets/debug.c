@@ -14,11 +14,10 @@ void codegen_debug(IR ir, FILE *output) {
             uint32_t r = inst.result-1, x = inst.x-1, y = inst.y-1;
             switch (inst.function) {
             case TAC_CALL_REG:
+                fprintf(output, "    ");
                 if (inst.result)
-                    fprintf(output, "    r%d = ", r);
-                else
-                    fprintf(output, "    ");
-                fprintf(output, "r%d()\n", x);
+                    fprintf(output, "r%d = ", r);
+                fprintf(output, "r%d() # %d\n", x, inst.y);
                 call_count = 0;
                 break;
             case TAC_CALL_SYM:
@@ -26,22 +25,27 @@ void codegen_debug(IR ir, FILE *output) {
                     fprintf(output, "    r%d = ", r);
                 else
                     fprintf(output, "    ");
-                fprintf(output, "%.*s()\n", PS(ir.symbols.data[inst.x]));
+                fprintf(output, "%.*s() # %d\n",
+                        PS(ir.symbols.data[inst.x]),
+                        inst.y);
                 call_count = 0;
                 break;
             case TAC_CALL_PUSH:
-                fprintf(output, "    c%d = r%d\n", (call_count++), x);
+                fprintf(output, "    c%d = r%d\n",
+                        inst.y - 1 - (call_count++), x);
                 break;
             case TAC_CALL_PUSH_INT:
-                fprintf(output, "    c%d = %d\n", (call_count++), inst.x);
+                fprintf(output, "    c%d = %d\n",
+                        inst.y-1-(call_count++), inst.x);
                 break;
             case TAC_CALL_PUSH_SYM:
                 if (ir.symbols.data[inst.x].string != NULL) {
-                    fprintf(output, "    c%d = [%.*s]\n", inst.result,
+                    fprintf(output, "    c%d = [%.*s]\n",
+                            inst.y - 1 - (call_count++),
                             PS(ir.symbols.data[inst.x]));
                 } else {
-                    fprintf(output, "    c%d = [data_%d]\n", (call_count++),
-                            inst.x);
+                    fprintf(output, "    c%d = [data_%d]\n",
+                            inst.y - 1 - (call_count++), inst.x);
                 }
                 break;
             case TAC_LOAD_INT:

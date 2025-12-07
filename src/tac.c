@@ -143,11 +143,7 @@ uint16_t count_temps(TAC32Arr tac) {
     return temps_count;
 }
 
-// TODO: try to remember tf am i doing here with 0th register and assign some as
-// "unused", so it wouldn't do register pressure and generate unneccessary
-// movement
-//
-// UPD: map structure on line 100 seems to relate to this
+// uses graph coloring algorithm, 0th register represents unused result
 uint16_t fold_temporaries(TAC32Arr tac) {
     Arena scratch = {0};
     // +1 for 0th
@@ -177,7 +173,6 @@ uint16_t fold_temporaries(TAC32Arr tac) {
     }
 
     uint32_t *map = arena_alloc(&scratch, temps_count*sizeof(*map));
-    // memset(map, 0xff, temps_count*sizeof(*map));
     memset(map, 0, temps_count*sizeof(*map));
 
     bool *used_registers = arena_alloc(&scratch, temps_count*sizeof(bool));
@@ -194,8 +189,7 @@ uint16_t fold_temporaries(TAC32Arr tac) {
                 goto success;
             }
         }
-        // i think it should be unreachable
-        abort();
+        UNREACHABLE();
     success:
         continue;
     }

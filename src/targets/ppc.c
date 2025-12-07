@@ -14,14 +14,20 @@
 // like questionable choice but we'll see
 static uint8_t used_temp_registers = 0;
 static uint32_t register_map[MAX_TEMP_REGISTERS] = {0};
-uint32_t access_register(FILE *output, uint32_t stack_frame, uint32_t reg,
-                         bool call) {
+
+static uint32_t access_call_register(FILE *output, uint32_t reg) {
+    (void)output;
     const int call_base = 3;
-    const int gpr_base = 14;
-    if (call) {
-        if (reg > 8) TODO();
-        return reg+call_base;
+    if (reg > 8) {
+        fprintf(stderr, "Reg: %d\n", reg);
+        TODO();
     }
+    return reg + call_base;
+}
+
+static uint32_t access_register(FILE *output, uint32_t stack_frame,
+                                uint32_t reg) {
+    const int gpr_base = 14;
     if (reg == 0) return 0;
 
     // 19 is the amount of nonvolatile registers on powerpc
@@ -40,7 +46,7 @@ uint32_t access_register(FILE *output, uint32_t stack_frame, uint32_t reg,
     return hardware_register;
 }
 
-void free_temp_registers(FILE* output, uint32_t stack_frame) {
+static void free_temp_registers(FILE* output, uint32_t stack_frame) {
     for (uint8_t i = 0; i < used_temp_registers; i++) {
         uint32_t hardware_register = 10-i;
         fprintf(output, "    stw %d,%d(1)\n",
@@ -51,12 +57,6 @@ void free_temp_registers(FILE* output, uint32_t stack_frame) {
 }
 
 void codegen_powerpc(IR ir, FILE *output) {
-    // TODO: handle spill:
-    // fold_temporaries minimizes their usage by reusing,
-    // but it threats "register space" as nearly infinite amount of registers
-    // on real machine we would use the first N avalible as real registers,
-    // and other as "in RAM registers", by loading their value dynamically from
-    // stack frame
     for (size_t i = 0; i < ir.functions.len; i++) {
         TAC32Arr func = ir.functions.data[i].code;
         String func_name = ir.symbols.data[ir.functions.data[i].name];
@@ -72,7 +72,7 @@ void codegen_powerpc(IR ir, FILE *output) {
         int real_registers = MIN(ir.functions.data[i].temps_count, 18);
         for (int j = 0; j < real_registers; j++) {
             fprintf(output, "    stw %d, %d(1)\n",
-                    access_register(output, stack_frame, j, false),
+                    access_register(output, stack_frame, j+1),
                     (real_registers - j) * 4);
         }
         fprintf(output, "\n");
@@ -81,13 +81,13 @@ void codegen_powerpc(IR ir, FILE *output) {
             uint32_t r = ~0, x = ~0, y = ~0;
             switch (get_arity(inst.function)) {
             case A_BINARY:
-                y = access_register(output, stack_frame, inst.y, false);
+                y = access_register(output, stack_frame, inst.y);
                 /* fallthrough */
             case A_UNARY:
-                x = access_register(output, stack_frame, inst.x, false);
+                x = access_register(output, stack_frame, inst.x);
                 /* fallthrough */
             case A_NULLARY:
-                r = access_register(output, stack_frame, inst.result, false);
+                r = access_register(output, stack_frame, inst.result);
                 break;
             }
             switch (inst.function) {
@@ -96,6 +96,7 @@ void codegen_powerpc(IR ir, FILE *output) {
                 fprintf(output, "    bctrl\n");
                 if (inst.result)
                     fprintf(output, "    mr %d, 3\n", r);
+                call_count = 0;
                 break;
             case TAC_CALL_SYM:
                 fprintf(output, "    bl %.*s\n", PS(ir.symbols.data[inst.x]));
@@ -104,11 +105,11 @@ void codegen_powerpc(IR ir, FILE *output) {
                 call_count = 0;
                 break;
             case TAC_CALL_PUSH: {
-                uint32_t o = access_register(output, stack_frame, call_count++, true);
+                uint32_t o = access_call_register(output, inst.y-1-call_count++);
                 fprintf(output, "    mr %d, %d\n", o, x);
             } break;
             case TAC_CALL_PUSH_INT: {
-                uint32_t o = access_register(output, stack_frame, call_count++, true);
+                uint32_t o = access_call_register(output, inst.y-1-call_count++);
                 if (inst.x <= 0xFFFF) {
                     fprintf(output, "    li %d, %d\n", o, inst.x);
                 } else {
@@ -117,7 +118,7 @@ void codegen_powerpc(IR ir, FILE *output) {
                 }
             } break;
             case TAC_CALL_PUSH_SYM: {
-                uint32_t o = access_register(output, stack_frame, call_count++, true);
+                uint32_t o = access_call_register(output, inst.y-1-call_count++);
                 if (ir.symbols.data[inst.x].string != NULL) {
                     fprintf(output, "    lis %d, %.*s@ha\n",
                             o, PS(ir.symbols.data[inst.x]));
@@ -142,7 +143,7 @@ void codegen_powerpc(IR ir, FILE *output) {
             case TAC_LOAD_ARG:
                 if (!inst.result) break;
                 fprintf(output, "    mr %d, %d\n", r,
-                        access_register(output, stack_frame, inst.x, true));
+                        access_call_register(output, inst.x));
                 break;
             case TAC_LOAD_SYM:
                 if (!inst.result) break;
@@ -225,7 +226,7 @@ void codegen_powerpc(IR ir, FILE *output) {
         fprintf(output, "    %.*s.epilogue:\n", PS(func_name));
         for (int j = 0; j < real_registers; j++) {
             fprintf(output, "    lwz %d, %d(1)\n",
-                    access_register(output, stack_frame, j, false),
+                    access_register(output, stack_frame, j+1),
                     (real_registers - j) * 4);
         }
         fprintf(output, "    lwz 0, %d(1)\n", stack_frame + 4);

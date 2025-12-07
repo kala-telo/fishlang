@@ -108,7 +108,8 @@ IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
                 da_append(arena, ctx->current_function->code,
                           ((TAC32){++ctx->temp_num, TAC_SUB, x, y}));
                 da_append(arena, ctx->args_stack, ctx->temp_num);
-            } else if (string_eq(node.as.call.callee, S("<")) || string_eq(node.as.call.callee, S(">"))) {
+            } else if (string_eq(node.as.call.callee, S("<")) ||
+                       string_eq(node.as.call.callee, S(">"))) {
                 codegen(arena, node.as.call.args, ctx);
                 if (node.as.call.args.len != 2)
                     TODO();
@@ -158,10 +159,11 @@ IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
             } else {
                 codegen(arena, node.as.call.args, ctx);
                 size_t base = ctx->args_stack.len - node.as.call.args.len;
-                for (size_t i = 0; i < node.as.call.args.len; i++) {
+                size_t len = node.as.call.args.len;
+                for (size_t i = len; i --> 0 ;) {
                     da_append(arena, ctx->current_function->code,
                               ((TAC32){0, TAC_CALL_PUSH,
-                                       ctx->args_stack.data[base + i], 0}));
+                                       ctx->args_stack.data[base + i], len}));
                     ctx->args_stack.len--;
                 }
                 da_append(arena, ctx->ir.symbols, node.as.call.callee);
@@ -176,11 +178,11 @@ IR codegen(Arena *arena, ASTArr ast, CodeGenCTX *ctx) {
                     }
                     da_append(arena, ctx->current_function->code,
                               ((TAC32){++ctx->temp_num, TAC_CALL_REG,
-                                       (uint32_t)f, 0}));
+                                       (uint32_t)f, len}));
                 } else {
                     da_append(arena, ctx->current_function->code,
                               ((TAC32){++ctx->temp_num, TAC_CALL_SYM,
-                                       ctx->ir.symbols.len - 1, 0}));
+                                       ctx->ir.symbols.len - 1, len}));
                 }
                 da_append(arena, ctx->args_stack, ctx->temp_num);
             }

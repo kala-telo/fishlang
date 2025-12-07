@@ -1,4 +1,7 @@
+(extern printf (fn [cstr ...] i32))
+
 (def foo (fn [(a i32) (b i32) (c i32) (d i32) (e i32) (f i32) (g i32)] i32
+  (printf "a: %d b: %d c: %d d: %d e: %d f: %d g: %d\n" a b c d e f g)
   (let [(v0  i32 (+ a  1))
         (v1  i32 (+ b  2))
         (v2  i32 (+ c  3))
@@ -45,7 +48,7 @@
            v30 v31 v32 v33 v34 v35 v36 v37 v38 v39
            a b c d e f g))))
 
-(extern printf (fn [cstr i32] i32))
 (def main (fn [] i32
-    (printf "%d\n" (foo 1 2 3 4 5 6 7))
-    0))
+  (printf "1: %d 2: %d 3: %d 4: %d 5: %d 6: %d 7: %d\n"
+    1 2 3 4 5 6 7)
+  (printf "%d\n" (foo 1 2 3 4 5 6 7)) 0))

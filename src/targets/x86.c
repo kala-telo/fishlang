@@ -5,8 +5,6 @@
 #include "../tac.h"
 #include "../todo.h"
 
-// stupid ass sys-v x86 calling convention stores args not in a same
-// order as my IR
 typedef struct {
     // instruction index
     size_t *data;
@@ -19,35 +17,6 @@ static const char *const reg_names[] = {
 
 #define ARRLEN(xs) (sizeof(xs)/sizeof(*(xs)))
 #define MIN(x, y) ((x) > (y) ? (y) : (x))
-
-static void x86_prepare_for_call(FILE* output, TAC32Arr func, X86Stack stack, IR ir) {
-    // kinda ugly but pushl instructions seem to produce shorter
-    // machine code than doing `movl X, N(%esp)`, so i suppose it's
-    // better to reverse the stack this way at compile time
-    for (size_t i = stack.len; i-- > 0;) {
-        TAC32 inst = func.data[stack.data[i]];
-        uint32_t x = inst.x - 1;
-        switch (inst.function) {
-        case TAC_CALL_PUSH:
-            fprintf(output, "    pushl %s\n", reg_names[x]);
-            break;
-        case TAC_CALL_PUSH_SYM:
-            if (ir.symbols.data[inst.x].string != NULL) {
-                fprintf(output, "    pushl $%.*s\n",
-                        PS(ir.symbols.data[inst.x]));
-            } else {
-                fprintf(output, "    pushl $data_%d\n", inst.x);
-            }
-            break;
-        case TAC_CALL_PUSH_INT:
-            fprintf(output, "    pushl $%d\n", inst.x);
-            break;
-        default:
-            fprintf(stderr, "Function: %d\n", inst.function);
-            UNREACHABLE();
-        }
-    }
-}
 
 void codegen_x86_32(IR ir, FILE *output) {
     // TODO: handle spill, see the powerpc target
@@ -69,16 +38,19 @@ void codegen_x86_32(IR ir, FILE *output) {
         fprintf(output, "\n");
         Arena arena = {0};
 
-        X86Stack stack = {0};
+        int call_count = 0;
 
         for (size_t j = 0; j < func.len; j++) {
             TAC32 inst = func.data[j];
             uint32_t r = inst.result - 1,
                      x = inst.x      - 1,
                      y = inst.y      - 1;
+            // we restore esp several times while we could use ebp, related to
+            // fixme up in the code
             switch (inst.function) {
             case TAC_LOAD_ARG:
-                fprintf(output, "    movl %d(%%esp), %s\n", inst.x*4+4+temps_count*4,
+                fprintf(output, "    movl %d(%%esp), %s\n",
+                        inst.x * 4 + 4 + temps_count * 4,
                         reg_names[r]);
                 break;
             case TAC_LOAD_SYM:
@@ -93,28 +65,38 @@ void codegen_x86_32(IR ir, FILE *output) {
                 fprintf(output, "    movl $%d, %s\n", inst.x, reg_names[r]);
                 break;
             case TAC_CALL_PUSH:
-            case TAC_CALL_PUSH_INT:
+                call_count++;
+                fprintf(output, "    pushl %s\n", reg_names[x]);
+                break;
             case TAC_CALL_PUSH_SYM:
-                da_append(&arena, stack, j);
+                call_count++;
+                if (ir.symbols.data[inst.x].string != NULL) {
+                    fprintf(output, "    pushl $%.*s\n",
+                            PS(ir.symbols.data[inst.x]));
+                } else {
+                    fprintf(output, "    pushl $data_%d\n", inst.x);
+                }
+                break;
+            case TAC_CALL_PUSH_INT:
+                call_count++;
+                fprintf(output, "    pushl $%d\n", inst.x);
                 break;
             case TAC_CALL_REG:
-                x86_prepare_for_call(output, func, stack, ir);
                 fprintf(output, "    call *%s\n", reg_names[x]);
                 if (inst.result)
                     fprintf(output, "    mov %%eax, %s\n", reg_names[r]);
-                if (stack.len != 0)
-                    fprintf(output, "    addl $%zu, %%esp\n", stack.len*4);
-                stack.len = 0;
+                if (call_count != 0)
+                    fprintf(output, "    addl $%d, %%esp\n", call_count*4);
+                call_count = 0;
                 break;
             case TAC_CALL_SYM:
-                x86_prepare_for_call(output, func, stack, ir);
                 fprintf(output, "    call %.*s\n", PS(ir.symbols.data[inst.x]));
                 if (inst.result != 0) {
                     fprintf(output, "    movl %%eax, %s\n", reg_names[r]);
                 }
-                if (stack.len != 0)
-                    fprintf(output, "    addl $%zu, %%esp\n", stack.len*4);
-                stack.len = 0;
+                if (call_count != 0)
+                    fprintf(output, "    addl $%d, %%esp\n", call_count*4);
+                call_count = 0;
                 break;
             case TAC_RETURN_VAL:
                 fprintf(output, "    movl %s, %%eax\n", reg_names[x]);

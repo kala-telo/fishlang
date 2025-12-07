@@ -16,7 +16,7 @@ compiler development to me. <br>
 - [x] PowerPC
 - [x] MIPS
 - [x] x86_32
-- [x] PDP-8
+- [x] PDP-8 (currently broken)
 - [ ] ARM
 - [ ] RISC-V
 - [ ] ..?
@@ -45,6 +45,8 @@ It took me about 3 attemts to get it to point I'm happy with.
 - https://wiki.osdev.org/Calling_Conventions
 ## MIPS
 - https://en.wikibooks.org/wiki/MIPS_Assembly/Register_File
+- https://jarrettbillingsley.github.io/teaching/classes/cs0447/guides/instructions.html
+- https://refspecs.linuxfoundation.org/elf/mipsabi.pdf
 ## PDP-8
 - http://bitsavers.informatik.uni-stuttgart.de/pdf/dec/pdp8/pdp8/F-85_PDP-8_Users_Handbook_May66.pdf
 - http://bitsavers.informatik.uni-stuttgart.de/www.computer.museum.uq.edu.au/pdf/DEC-08-ASAB-D%20PAL%20III%20Symbolic%20Assembler%20Programming%20Manual.pdf
