@@ -487,7 +487,6 @@ void try_tail_call_optimization(Arena *arena, StaticFunction *func, String *name
     (void)arena;
     (void)func;
     (void)names;
-    // assert(func->code.capacity > func->code.len);
     // TAC32 inst = func->code.data[func->code.len-1];
     // if (inst.function != TAC_CALL_SYM ||
     //     !string_eq(names[inst.x], names[func->name])) {

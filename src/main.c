@@ -172,7 +172,7 @@ void compile(Target target, const char *const file_name, FILE *input,
             repeat |= return_lifting(&arena, &func->code);
         } while (repeat);
 
-        // try_tail_call_optimization(&arena, func, ir.symbols.data);
+        try_tail_call_optimization(&arena, func, ir.symbols.data);
         remove_phi(&arena, &func->code);
         func->temps_count = fold_temporaries(func->code);
     }

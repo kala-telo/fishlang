@@ -13,7 +13,7 @@
 #include <sys/wait.h>
 
 #ifndef DEBUG
-#define DEBUG 1
+#define DEBUG 0
 #endif
 
 #define UNIT_BUILD
@@ -28,7 +28,7 @@
 #else
 #   define CC "cc "
 #   ifndef CFLAGS
-#       define CFLAGS "-static -O3 " COMMON_CFLAGS
+#       define CFLAGS " -O3 " COMMON_CFLAGS
 #   endif
 #endif
 
