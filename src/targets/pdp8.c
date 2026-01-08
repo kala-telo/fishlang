@@ -434,8 +434,8 @@ void codegen_pdp8(IR ir, FILE *output) {
     PDP8DataArr data = {0};
     PDP8LabelsArr labels = {0};
     String std_functions[] = {
-        [0] = S("puts"),
-        [1] = S("printf"),
+        S("puts"),
+        S("printf"),
     };
     PDP8FunctionsArr functions = {0};
     for (size_t i = 0; i < ARRLEN(std_functions); i++) {

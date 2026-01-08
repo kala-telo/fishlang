@@ -22,6 +22,7 @@ struct _Arena {
     Arena *next;
 };
 
+__attribute__ ((alloc_size (2)))
 static inline void* arena_alloc(Arena *arena, size_t size) {
     assert(arena != NULL);
 
@@ -51,6 +52,7 @@ static inline void* arena_alloc(Arena *arena, size_t size) {
     return &arena->data[arena->allocated-size];
 }
 
+__attribute__ ((alloc_size (4)))
 static inline void* arena_realloc(Arena *arena, void *ptr, size_t old_size, size_t new_size) {
     size_t min = old_size > new_size ? new_size : old_size;
     void *new_ptr = arena_alloc(arena, new_size);

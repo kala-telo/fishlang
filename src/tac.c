@@ -483,6 +483,53 @@ void remove_phi(Arena *arena, TAC32Arr *tac) {
     remove_nops(tac);
 }
 
+bool replace_args(TAC32 *inst, uint32_t from, uint32_t to) {
+    bool result = false;
+    switch (get_arity(inst->function)) {
+    case A_BINARY:
+        if (inst->y == from) {
+            inst->y = to;
+            result = true;
+        }
+        /* fallthrough */
+    case A_UNARY:
+        if (inst->x == from) {
+            inst->x = to;
+            result = true;
+        }
+        /* fallthrough */
+    case A_NULLARY:
+        break;
+    }
+    return result;
+}
+
+bool value_numbering(TAC32Arr *tac) {
+    bool result = false;
+    for (size_t i = 0; i < tac->len; i++) {
+        TAC32 *inst1 = &tac->data[i];
+        if (!ispure(inst1->function))
+            continue;
+        for (size_t j = i+1; j < tac->len; j++) {
+            TAC32 *inst2 = &tac->data[j];
+            if (!ispure(inst2->function))
+                continue;
+            if (inst1->function != inst2->function)
+                continue;
+            if (inst1->y != inst2->y || inst1->x != inst2->x)
+                continue;
+            uint32_t f = inst2->result, t = inst1->result;
+            for (size_t k = j+1; k < tac->len; k++) {
+                if (!ispure(tac->data[k].function))
+                    continue;
+                result |= replace_args(&tac->data[k], f, t);
+            }
+            return result;
+        }
+    }
+    return result;
+}
+
 void try_tail_call_optimization(Arena *arena, StaticFunction *func, String *names) {
     (void)arena;
     (void)func;

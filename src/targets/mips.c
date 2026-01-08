@@ -137,12 +137,7 @@ void codegen_mips(IR ir, FILE *output) {
                 }
                 break;
             case TAC_LOAD_INT:
-                if (inst.x < 65536) {
-                    fprintf(output, "    li $%d, %d\n", r, inst.x);
-                } else {
-                    fprintf(output, "    lui $%d, %d\n", r, inst.x&0xffff);
-                    fprintf(output, "    addiu $%d, %d\n", r, inst.x>>16);
-                }
+                fprintf(output, "    li $%d, %d\n", r, inst.x);
                 break;
             case TAC_CALL_PUSH: {
                 uint32_t o = access_local_call_register(output, call_count++, inst.y);
@@ -150,12 +145,7 @@ void codegen_mips(IR ir, FILE *output) {
             } break;
             case TAC_CALL_PUSH_INT: {
                 uint32_t o = access_local_call_register(output, call_count++, inst.y);
-                if (inst.x < 65536) {
-                    fprintf(output, "    li $%d, %d\n", o, inst.x);
-                } else {
-                    fprintf(output, "    lui $%d, %d\n", o, inst.x & 0xffff);
-                    fprintf(output, "    addiu $%d, %d\n", o, inst.x >> 16);
-                }
+                fprintf(output, "    li $%d, %d\n", o, inst.x);
             } break;
             case TAC_CALL_PUSH_SYM: {
                 uint32_t o = access_local_call_register(output, call_count++, inst.y);

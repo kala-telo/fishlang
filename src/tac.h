@@ -80,4 +80,6 @@ void try_tail_call_optimization(Arena *arena, StaticFunction *func,
                                 String *names);
 bool return_lifting(Arena *arena, TAC32Arr *tac);
 void remove_phi(Arena *arena, TAC32Arr *tac);
+bool value_numbering(TAC32Arr *tac);
+
 #endif // TAC_H

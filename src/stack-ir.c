@@ -57,6 +57,8 @@ typedef struct {
 } StackIR;
 
 static void codegen(StackIR *sir, Arena *arena, ASTArr ast) {
+    if (sir->cur_function == NULL)
+        sir->cur_function = &sir->global;
     for (size_t i = 0; i < ast.len; i++) {
         AST node = ast.data[i];
         switch (node.kind) {

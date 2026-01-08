@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -170,6 +169,7 @@ void compile(Target target, const char *const file_name, FILE *input,
             repeat |= remove_unused(&func->code);
             repeat |= constant_propagation(&func->code);
             repeat |= return_lifting(&arena, &func->code);
+            repeat |= value_numbering(&func->code);
         } while (repeat);
 
         try_tail_call_optimization(&arena, func, ir.symbols.data);
