@@ -1,5 +1,6 @@
-(extern printf (fn [cstr ...] i32))
+let printf = fn cstr ... i32 => extern
 
-(def main (fn [] i32
-  (let [(x i32 34) (y i32 35)]
-    (printf "%d\n" (+ x y))) 0))
+let main = fn i32 =>
+    let [x = 34 y = 35]
+    printf "%d\n" (x + y);
+    0

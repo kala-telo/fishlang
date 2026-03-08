@@ -1,2 +1,5 @@
-(extern puts (fn [cstr] i32))
-(def main (fn [] i32 (puts "hellope") 0))
+let puts = fn (cstr) i32 extern
+
+let main = fn () i32
+    (puts "hellope");
+    0
