@@ -39,6 +39,7 @@ typedef enum {
     LEX_LT,
     LEX_GT,
     LEX_PLUS,
+    LEX_MINUS,
     LEX_FN,
     LEX_END,
 } TokenKind;

@@ -38,9 +38,25 @@ typedef struct {
 typedef struct _VarDef VarDef;
 typedef struct _Variable Variable;
 
-typedef struct {
-    String type;
-} TypeAST;
+typedef struct _TypeAST TypeAST;
+
+struct _TypeAST {
+    enum {
+        TYPE_I32,
+        TYPE_CSTR,
+        TYPE_UNIT,
+        TYPE_FN,
+        TYPE_BOOL,
+        TYPE_VARIADIC,
+    } type;
+    union {
+        struct {
+            // last type is the return type
+            TypeAST *data;
+            size_t len, capacity;
+        } fn;
+    } as;
+};
 
 typedef struct {
     String name;
@@ -95,7 +111,6 @@ struct _AST {
                 FnArg* data;
                 size_t len, capacity;
             } args;
-            TypeAST ret;
             ASTArr body;
         } fn; // AST_FN
         struct {

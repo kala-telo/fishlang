@@ -23,6 +23,8 @@ const char *tok_names[] = {
     [LEX_COLON]     = "`:`",
     [LEX_SEMICOLON] = "`;`",
     [LEX_PLUS]      = "`+`",
+    [LEX_MINUS]     = "`-`",
+    [LEX_EQUALS]    = "`=`",
     [LEX_NAME]      = "<name>",
     [LEX_STRING]    = "<string>",
     [LEX_NUMBER]    = "<number>",
@@ -130,6 +132,14 @@ Token next_token(Lexer *lex) {
         if (!eat_char(lex)) goto fail;
         return (Token){
             .kind = LEX_LT,
+            .str = (String){lex->position-1, 1},
+            .loc = lex->loc
+        };
+        break;
+    case '-':
+        if (!eat_char(lex)) goto fail;
+        return (Token){
+            .kind = LEX_MINUS,
             .str = (String){lex->position-1, 1},
             .loc = lex->loc
         };

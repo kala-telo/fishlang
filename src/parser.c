@@ -34,9 +34,34 @@ int64_t s_atoi(String s) {
     return result;
 }
 
-TypeAST parse_type(Lexer *lex) {
-    String type = expect(next_token(lex), LEX_NAME).str;
-    return (TypeAST){type};
+TypeAST parse_type(Arena *arena, Lexer *lex) {
+    if (peek_token(lex).kind == LEX_OPAREN) {
+        expect(next_token(lex), LEX_OPAREN);
+        if (peek_token(lex).kind == LEX_CPAREN) {
+            expect(next_token(lex), LEX_CPAREN);
+            return (TypeAST){TYPE_UNIT, {0}};
+        }
+        expect(next_token(lex), LEX_FN);
+        TypeAST t = {0};
+        t.type = TYPE_FN;
+        while (peek_token(lex).kind != LEX_CPAREN) {
+            da_append(arena, t.as.fn, parse_type(arena, lex));
+        }
+        expect(next_token(lex), LEX_CPAREN);
+        return t;
+    }
+    String type_name = expect(next_token(lex), LEX_NAME).str;
+    if (string_eq(type_name, S("i32"))) {
+        return (TypeAST){TYPE_I32, {0}};
+    } else if (string_eq(type_name, S("cstr"))) {
+        return (TypeAST){TYPE_CSTR, {0}};
+    } else if (string_eq(type_name, S("..."))) {
+        return (TypeAST){TYPE_VARIADIC, {0}};
+    } else {
+        fprintf(stderr, "Unrecognized type: %.*s\n", PS(type_name));
+        TODO();
+    }
+    return (TypeAST){0};
 }
 
 ASTKind is_token_binop(TokenKind k) {
@@ -47,7 +72,7 @@ ASTKind is_token_binop(TokenKind k) {
     case LEX_SEMICOLON: case LEX_FN: case LEX_END: case LEX_IF: case LEX_THEN:
     case LEX_ELSE:
         return false;
-    case LEX_LT: case LEX_GT: case LEX_PLUS:
+    case LEX_LT: case LEX_GT: case LEX_PLUS: case LEX_MINUS:
         return true;
     }
 }
@@ -55,6 +80,7 @@ ASTKind is_token_binop(TokenKind k) {
 void check_binop(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
     Token t = peek_token(lex);
     if (is_token_binop(t.kind)) {
+        assert(arr->len != 0);
         next_token(lex);
         AST rhs = da_last(*arr);
         da_last(*arr) = (AST){AST_APPLY, {0}, lex->loc, (*node_id)++, parent};
@@ -66,13 +92,32 @@ void check_binop(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *nod
     }
 }
 
-void parse_let(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
-    expect(next_token(lex), LEX_LET);
+void parse_let_pair(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
     Token t = expect(next_token(lex), LEX_NAME);
     expect(next_token(lex), LEX_EQUALS);
     da_append(arena, *arr, ((AST){AST_LET, {0}, lex->loc, (*node_id)++, parent}));
     AST *let = &da_last(*arr);
     parse(arena, lex, &let->as.let.rhs, let, node_id);
+}
+
+void parse_let(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
+    expect(next_token(lex), LEX_LET);
+    if (peek_token(lex).kind == LEX_OBRAKET) {
+        expect(next_token(lex), LEX_OBRAKET);
+        while (true) {
+            parse_let_pair(arena, lex, arr, parent, node_id);
+            parent = &da_last(*arr);
+            assert(parent->kind == AST_LET);
+            arr = &parent->as.let.body;
+            if (peek_token(lex).kind == LEX_CBRAKET) {
+                break;
+            }
+            expect(next_token(lex), LEX_SEMICOLON);
+        }
+        expect(next_token(lex), LEX_CBRAKET);
+    } else {
+        parse_let_pair(arena, lex, arr, parent, node_id);
+    }
 }
 
 void parse_fn(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
@@ -89,11 +134,7 @@ void parse_fn(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_i
             name = expect(next_token(lex), LEX_NAME).str;
             expect(next_token(lex), LEX_COLON);
         }
-        type = parse_type(lex);
-        if (peek_token(lex).kind == LEX_ARROW) {
-            fn->as.fn.ret = type;
-            continue;
-        }
+        type = parse_type(arena, lex);
         da_append(arena, fn->as.fn.args, ((FnArg){name, type}));
     }
     expect(next_token(lex), LEX_ARROW);
@@ -129,6 +170,8 @@ void parse_fn_app(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *no
             parse_name(arena, lex, &application->as.apply.args, application, node_id);
             break;
         case LEX_SEMICOLON: case LEX_IF: case LEX_THEN: case LEX_ELSE: case LEX_LET:
+        case LEX_PLUS: case LEX_CPAREN: case LEX_CBRAKET: case LEX_LT: case LEX_GT:
+        case LEX_MINUS:
             loop = false;
             break;
         default:
@@ -136,6 +179,7 @@ void parse_fn_app(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *no
             TODO();
         }
     }
+    check_binop(arena, lex, arr, parent, node_id);
 }
 
 void parse_number(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
@@ -209,6 +253,8 @@ void parse(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) 
             da_last(*arr).as.boolean = true;
         } else if (string_eq(b, S("false"))) {
             da_last(*arr).as.boolean = false;
+        } else {
+            UNREACHABLE();
         }
     } break;
     default:

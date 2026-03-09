@@ -16,10 +16,10 @@ struct _Type {
     enum {
         TYPE_VOID,
         TYPE_FUNCTION,
-        TYPE_CSTR,
-        TYPE_I32,
+        // TYPE_CSTR,
+        // TYPE_I32,
         TYPE_ANY, // changing it to variadic or so can be a good idea
-        TYPE_BOOL,
+        // TYPE_BOOL,
     } type;
     union {
         struct {
