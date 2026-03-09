@@ -115,6 +115,29 @@ void dump_ast(ASTArr ast, FILE* out) {
             }
             dump_ast(node.as.var.body, out);
             break;
+        case AST_LET:
+            fprintf(out, "    %zu [label=\"let (%.*s)\"];\n", node.id,
+                PS(node.as.let.name));
+            for (size_t j = 0; j < node.as.let.body.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.let.body.data[j].id);
+            }
+            dump_ast(node.as.let.rhs, out);
+            dump_ast(node.as.let.body, out);
+            break;
+        case AST_FN:
+            fprintf(out, "    %zu [label=\"fn\"];\n", node.id);
+            for (size_t j = 0; j < node.as.fn.body.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.fn.body.data[j].id);
+            }
+            dump_ast(node.as.fn.body, out);
+            break;
+        case AST_APPLY:
+            fprintf(out, "    %zu [label=\"app (%.*s)\"];\n", node.id,
+                PS(node.as.apply.name));
+            for (size_t j = 0; j < node.as.apply.args.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.apply.args.data[j].id);
+            }
+            dump_ast(node.as.apply.args, out);
         }
     }
 }
@@ -155,47 +178,45 @@ void compile(Target target, const char *const file_name, FILE *input,
         goto exit;
     }
 
-    TypeTable tt = {0};
-    extract_types(&arena, body, &tt);
+    //TypeTable tt = {0};
+    //extract_types(&arena, body, &tt);
 
-    typecheck(body, tt);
+    //typecheck(body, tt);
 
-    CodeGenCTX cg_ctx = { 0 };
-    IR ir = codegen(&arena, body, &cg_ctx);
-    for (size_t i = 0; i < ir.functions.len; i++) {
-        StaticFunction *func = &ir.functions.data[i];
-        bool repeat;
-        do {
-            repeat = peephole_optimization(&func->code);
-            repeat |= remove_unused(&func->code);
-            repeat |= constant_propagation(&func->code);
-            repeat |= return_lifting(&arena, &func->code);
-        } while (repeat);
-
-        // try_tail_call_optimization(&arena, func, ir.symbols.data);
-        remove_phi(&arena, &func->code);
-        func->temps_count = fold_temporaries(func->code);
-    }
-    switch (target) {
-    case TARGET_DEBUG:
-        codegen_debug(ir, out);
-        break;
-    case TARGET_PPC:
-        codegen_powerpc(ir, out);
-        break;
-    case TARGET_X86_32:
-        codegen_x86_32(ir, out);
-        break;
-    case TARGET_MIPS:
-        codegen_mips(ir, out);
-        break;
-    case TARGET_PDP8:
-        codegen_pdp8(ir, out);
-        break;
-    case TARGET_AST:
-        UNREACHABLE();
-    }
-
+    //CodeGenCTX cg_ctx = { 0 };
+    //IR ir = codegen(&arena, body, &cg_ctx);
+    //for (size_t i = 0; i < ir.functions.len; i++) {
+    //    StaticFunction *func = &ir.functions.data[i];
+    //    bool repeat;
+    //    do {
+    //        repeat = peephole_optimization(&func->code);
+    //        repeat |= remove_unused(&func->code);
+    //        repeat |= constant_propagation(&func->code);
+    //        repeat |= return_lifting(&arena, &func->code);
+    //    } while (repeat);
+    //    // try_tail_call_optimization(&arena, func, ir.symbols.data);
+    //    remove_phi(&arena, &func->code);
+    //    func->temps_count = fold_temporaries(func->code);
+    //}
+    //switch (target) {
+    //case TARGET_DEBUG:
+    //    codegen_debug(ir, out);
+    //    break;
+    //case TARGET_PPC:
+    //    codegen_powerpc(ir, out);
+    //    break;
+    //case TARGET_X86_32:
+    //    codegen_x86_32(ir, out);
+    //    break;
+    //case TARGET_MIPS:
+    //    codegen_mips(ir, out);
+    //    break;
+    //case TARGET_PDP8:
+    //    codegen_pdp8(ir, out);
+    //    break;
+    //case TARGET_AST:
+    //    UNREACHABLE();
+    //}
 exit:
     arena_destroy(&arena);
     free(str.string);

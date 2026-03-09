@@ -11,16 +11,23 @@
 typedef struct _AST AST;
 
 typedef enum {
+    // OLD
     AST_FUNC,
     AST_DEF,
     AST_VARDEF,
     AST_EXTERN,
     AST_CALL,
-    AST_NAME,
-    AST_STRING,
     AST_NUMBER,
     AST_BOOL,
     AST_LIST,
+    // NEW
+    AST_STRING,
+    AST_NAME,
+    AST_LET,
+    AST_FN,
+    AST_APPLY,
+    AST_BLOCK,
+    AST_IF,
 } ASTKind;
 
 typedef struct {
@@ -31,9 +38,19 @@ typedef struct {
 typedef struct _VarDef VarDef;
 typedef struct _Variable Variable;
 
+typedef struct {
+    String type;
+} TypeAST;
+
+typedef struct {
+    String name;
+    TypeAST type;
+} FnArg;
+
 struct _AST {
     ASTKind kind;
     union {
+        // OLD
         struct { // AST_FUNC
             struct {
                 VarDef *data;
@@ -67,6 +84,30 @@ struct _AST {
             String name;
             ASTArr body;
         } def; // AST_DEF
+        // NEW
+        struct {
+            String name;
+            ASTArr rhs;
+            ASTArr body;
+        } let; // AST_LET
+        struct {
+            struct {
+                FnArg* data;
+                size_t len, capacity;
+            } args;
+            TypeAST ret;
+            ASTArr body;
+        } fn; // AST_FN
+        struct {
+            String name;
+            ASTArr args;
+        } apply; // AST_APPLY
+        ASTArr block; // AST_BLOCK
+        struct {
+            ASTArr cond;
+            ASTArr then;
+            ASTArr elsee;
+        } iff; // AST_IF
     } as;
     Location loc;
     size_t id;

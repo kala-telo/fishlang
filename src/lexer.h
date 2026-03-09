@@ -27,6 +27,19 @@ typedef enum {
     LEX_STRING,
     LEX_NUMBER,
     LEX_BOOL,
+    LEX_IF,
+    LEX_THEN,
+    LEX_ELSE,
+    LEX_LET,
+    LEX_EQUALS,
+    LEX_EXTERN,
+    LEX_ARROW,
+    LEX_COLON,
+    LEX_SEMICOLON,
+    LEX_LT,
+    LEX_GT,
+    LEX_PLUS,
+    LEX_FN,
     LEX_END,
 } TokenKind;
 
@@ -68,5 +81,6 @@ typedef struct {
 
 Token next_token(Lexer *lex);
 Token peek_token(Lexer *lex);
+Token peek_token_n(Lexer *lex, size_t n);
 
 #endif // LEXER_H

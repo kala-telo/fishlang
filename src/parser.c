@@ -34,116 +34,182 @@ int64_t s_atoi(String s) {
     return result;
 }
 
-// NOTE: i've kinda realized that i'm using lex->loc everywhere and it seems weird
-// maybe it's fine but i should consider using token position l8r
-// NOTE: maybe consider spliting it into parsing 1 thing and array of things
-void parse(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
-    Token t = next_token(lex);
-    switch (t.kind) {
-    case LEX_OPAREN: {
-        Token t = expect(next_token(lex), LEX_NAME);
-        if (string_eq(S("fn"), t.str)) {
-            da_append(arena, *arr,
-                      ((AST){AST_FUNC, {0}, lex->loc, (*node_id)++, parent}));
-            AST *func = &da_last(*arr);
-            expect(next_token(lex), LEX_OBRAKET);
-            while (peek_token(lex).kind != LEX_CBRAKET) {
-                if (peek_token(lex).kind == LEX_NAME) {
-                    String name = expect(next_token(lex), LEX_NAME).str;
-                    ASTArr type = { 0 };
-                    da_append(arena, type,
-                              ((AST){AST_NAME, .as.name = name, lex->loc,
-                                     (*node_id)++, func}));
-                    da_append(arena, func->as.func.args, ((VarDef){{0}, type}));
-                } else {
-                    expect(next_token(lex), LEX_OPAREN);
-                    String name = expect(next_token(lex), LEX_NAME).str;
-                    ASTArr type = { 0 };
-                    parse(arena, lex, &type, func, node_id);
-                    da_append(arena, func->as.func.args,
-                              ((VarDef){name, type}));
-                    expect(next_token(lex), LEX_CPAREN);
-                }
-            }
-            expect(next_token(lex), LEX_CBRAKET);
-            parse(arena, lex, &func->as.func.ret, func, node_id);
-            assert(func->as.func.ret.len == 1);
-            while (peek_token(lex).kind != LEX_CPAREN) {
-                parse(arena, lex, &func->as.func.body, func, node_id);
-            }
-        } else if (string_eq(S("let"), t.str)) {
-            da_append(arena, *arr, ((AST){AST_VARDEF, {0}, lex->loc, (*node_id)++, parent}));
-            AST *vars = &da_last(*arr);
-            expect(next_token(lex), LEX_OBRAKET);
-            while (peek_token(lex).kind != LEX_CBRAKET) {
-                expect(next_token(lex), LEX_OPAREN);
-                String name = expect(next_token(lex), LEX_NAME).str;
-                ASTArr type = { 0 };
-                parse(arena, lex, &type, vars, node_id);
-                da_append(arena, vars->as.var.variables, ((Variable){{name, type}, {0}}));
-                parse(arena, lex, &da_last(vars->as.var.variables).value, vars, node_id);
-                expect(next_token(lex), LEX_CPAREN);
-            }
-            expect(next_token(lex), LEX_CBRAKET);
-            while (peek_token(lex).kind != LEX_CPAREN) {
-                parse(arena, lex, &vars->as.var.body, vars, node_id);
-            }
-        } else if (string_eq(S("def"), t.str)) {
-            da_append(arena, *arr, ((AST){AST_DEF, {0}, lex->loc, (*node_id)++, parent}));
-            AST *def = &da_last(*arr);
-            def->as.def.name = expect(next_token(lex), LEX_NAME).str;
-            parse(arena, lex, &def->as.def.body, def, node_id);
-            assert(def->as.def.body.len == 1);
-        } else if (string_eq(S("extern"), t.str)) {
-            da_append(arena, *arr, ((AST){AST_EXTERN, {0}, lex->loc, (*node_id)++, parent}));
-            AST *external = &da_last(*arr);
-            external->as.external.name = expect(next_token(lex), LEX_NAME).str;
-            parse(arena, lex, &external->as.external.body, external, node_id);
-            assert(external->as.external.body.len == 1);
-        } else {
-            da_append(arena, *arr, ((AST){AST_CALL, {0}, lex->loc, (*node_id)++, parent}));
-            AST *call = &da_last(*arr);
-            call->as.call.callee = t.str;
-            while (peek_token(lex).kind != LEX_CPAREN) {
-                parse(arena, lex, &call->as.call.args, call, node_id);
-            }
+TypeAST parse_type(Lexer *lex) {
+    String type = expect(next_token(lex), LEX_NAME).str;
+    return (TypeAST){type};
+}
+
+ASTKind is_token_binop(TokenKind k) {
+    switch (k) {
+    case LEX_OPAREN: case LEX_CPAREN: case LEX_OBRAKET: case LEX_CBRAKET:
+    case LEX_NAME: case LEX_STRING: case LEX_NUMBER: case LEX_BOOL: case LEX_LET:
+    case LEX_EQUALS: case LEX_EXTERN: case LEX_ARROW: case LEX_COLON:
+    case LEX_SEMICOLON: case LEX_FN: case LEX_END: case LEX_IF: case LEX_THEN:
+    case LEX_ELSE:
+        return false;
+    case LEX_LT: case LEX_GT: case LEX_PLUS:
+        return true;
+    }
+}
+
+void check_binop(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
+    Token t = peek_token(lex);
+    if (is_token_binop(t.kind)) {
+        next_token(lex);
+        AST rhs = da_last(*arr);
+        da_last(*arr) = (AST){AST_APPLY, {0}, lex->loc, (*node_id)++, parent};
+        AST *binop = &da_last(*arr);
+        binop->as.apply.name = t.str;
+        da_append(arena, binop->as.apply.args, rhs);
+        parse(arena, lex, &binop->as.apply.args, binop, node_id);
+        assert(binop->as.apply.args.len == 2);
+    }
+}
+
+void parse_let(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
+    expect(next_token(lex), LEX_LET);
+    Token t = expect(next_token(lex), LEX_NAME);
+    expect(next_token(lex), LEX_EQUALS);
+    da_append(arena, *arr, ((AST){AST_LET, {0}, lex->loc, (*node_id)++, parent}));
+    AST *let = &da_last(*arr);
+    parse(arena, lex, &let->as.let.rhs, let, node_id);
+}
+
+void parse_fn(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
+    expect(next_token(lex), LEX_FN);
+    da_append(arena, *arr, ((AST){AST_FN, {0}, lex->loc, (*node_id)++, parent}));
+    AST *fn = &da_last(*arr);
+    if (peek_token(lex).kind == LEX_ARROW) {
+        TODO(); // error message about empty function signature
+    }
+    while (peek_token(lex).kind != LEX_ARROW) {
+        String name = S("");
+        TypeAST type;
+        if (peek_token_n(lex, 2).kind == LEX_COLON) {
+            name = expect(next_token(lex), LEX_NAME).str;
+            expect(next_token(lex), LEX_COLON);
         }
-        expect(next_token(lex), LEX_CPAREN);
-    } break;
-    case LEX_BOOL:
-        da_append(arena, *arr,
-                  ((AST){AST_BOOL, {0}, lex->loc, (*node_id)++, parent}));
-        if (string_eq(t.str, S("true"))) {
-            da_last(*arr).as.boolean = true;
-        } else if (string_eq(t.str, S("false"))) {
-            da_last(*arr).as.boolean = false;
-        } else {
+        type = parse_type(lex);
+        if (peek_token(lex).kind == LEX_ARROW) {
+            fn->as.fn.ret = type;
+            continue;
+        }
+        da_append(arena, fn->as.fn.args, ((FnArg){name, type}));
+    }
+    expect(next_token(lex), LEX_ARROW);
+    if (peek_token(lex).kind != LEX_EXTERN) {
+        parse(arena, lex, &fn->as.fn.body, fn, node_id);
+    } else {
+        expect(next_token(lex), LEX_EXTERN);
+    }
+}
+
+void parse_name(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
+    da_append(arena, *arr, ((AST){AST_APPLY, {0}, lex->loc, (*node_id)++, parent}));
+    da_last(*arr).as.apply.name = expect(next_token(lex), LEX_NAME).str;
+    check_binop(arena, lex, arr, parent, node_id);
+}
+
+void parse_fn_app(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
+    da_append(arena, *arr, ((AST){AST_APPLY, {0}, lex->loc, (*node_id)++, parent}));
+    AST *application = &da_last(*arr);
+    bool loop = true;
+    // NOTE: i have a strong feeling that it either wants to know arity of a
+    // function at parsing time, or to have some sort of expression ending
+    // delimeter. otherwise it's hard to know when expression ends.
+    // currently we implicitly threat some tokens as ending ones
+    application->as.apply.name = expect(next_token(lex), LEX_NAME).str;
+    while (loop) {
+        Token t = peek_token(lex);
+        switch (t.kind) {
+        case LEX_BOOL: case LEX_STRING: case LEX_NUMBER: case LEX_OPAREN:
+            parse(arena, lex, &application->as.apply.args, application, node_id);
+            break;
+        case LEX_NAME:
+            parse_name(arena, lex, &application->as.apply.args, application, node_id);
+            break;
+        case LEX_SEMICOLON: case LEX_IF: case LEX_THEN: case LEX_ELSE: case LEX_LET:
+            loop = false;
+            break;
+        default:
+            printf("peek_token(lex).kind = %s\n", tok_names[t.kind]);
             TODO();
         }
+    }
+}
+
+void parse_number(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
+    Token t = expect(next_token(lex), LEX_NUMBER);
+    AST num = {0};
+    num.kind = AST_NUMBER;
+    num.as.number = s_atoi(t.str);
+    num.id = (*node_id)++;
+    da_append(arena, *arr, num);
+    check_binop(arena, lex, arr, parent, node_id);
+}
+
+void parse_block(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
+    expect(next_token(lex), LEX_OPAREN);
+    AST block = {0};
+    block.kind = AST_BLOCK;
+    block.id = (*node_id)++;
+    da_append(arena, *arr, block);
+    parse(arena, lex, &da_last(*arr).as.block, &da_last(*arr), node_id);
+    expect(next_token(lex), LEX_CPAREN);
+    check_binop(arena, lex, arr, parent, node_id);
+}
+
+void parse(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node_id) {
+    Token t = peek_token(lex);
+    switch (t.kind) {
+    case LEX_LET:
+        parse_let(arena, lex, arr, parent, node_id);
         break;
-    case LEX_STRING:
-        da_append(arena, *arr,
-                  ((AST){AST_STRING, {0}, lex->loc, (*node_id)++, parent}));
-        da_last(*arr).as.string = t.str;
-        break;
-    case LEX_NUMBER:
-        da_append(arena, *arr,
-                  ((AST){AST_NUMBER, {0}, lex->loc, (*node_id)++, parent}));
-        da_last(*arr).as.number = s_atoi(t.str);
+    case LEX_FN:
+        parse_fn(arena, lex, arr, parent, node_id);
         break;
     case LEX_NAME:
-        da_append(arena, *arr,
-                  ((AST){AST_NAME, {0}, lex->loc, (*node_id)++, parent}));
-        da_last(*arr).as.name = t.str;
+        parse_fn_app(arena, lex, arr, parent, node_id);
         break;
-    case LEX_OBRAKET: {
-        da_append(arena, *arr,
-                  ((AST){AST_LIST, {0}, lex->loc, (*node_id)++, parent}));
-        AST *list = &da_last(*arr);
-        while (peek_token(lex).kind != LEX_CBRAKET) {
-            parse(arena, lex, &list->as.list, list, node_id);
+    case LEX_SEMICOLON:
+        expect(next_token(lex), LEX_SEMICOLON);
+        parse(arena, lex, arr, parent, node_id);
+        break;
+    case LEX_STRING: {
+        expect(next_token(lex), LEX_STRING);
+        AST str = {0};
+        str.kind = AST_STRING;
+        str.as.string = t.str;
+        str.id = (*node_id)++;
+        da_append(arena, *arr, str);
+    } break;
+    case LEX_NUMBER:
+        parse_number(arena, lex, arr, parent, node_id);
+        break;
+    case LEX_OPAREN:
+        parse_block(arena, lex, arr, parent, node_id);
+        break;
+    case LEX_IF: {
+        expect(next_token(lex), LEX_IF);
+        AST iff = {0};
+        iff.kind = AST_IF;
+        iff.id = (*node_id)++;
+        da_append(arena, *arr, iff);
+        AST *iffp = &da_last(*arr);
+        parse(arena, lex, &iffp->as.iff.cond, iffp, node_id);
+        expect(next_token(lex), LEX_THEN);
+        parse(arena, lex, &iffp->as.iff.then, iffp, node_id);
+        expect(next_token(lex), LEX_ELSE);
+        parse(arena, lex, &iffp->as.iff.elsee, iffp, node_id);
+    } break;
+    case LEX_BOOL: {
+        String b = expect(next_token(lex), LEX_BOOL).str;
+        da_append(arena, *arr, ((AST){AST_BOOL, {0}, lex->loc, (*node_id)++, parent}));
+        if (string_eq(b, S("true"))) {
+            da_last(*arr).as.boolean = true;
+        } else if (string_eq(b, S("false"))) {
+            da_last(*arr).as.boolean = false;
         }
-        expect(next_token(lex), LEX_CBRAKET);
     } break;
     default:
         printf("%s:%d:%d Unexpected token: %s\n", t.loc.file, t.loc.line + 1,
