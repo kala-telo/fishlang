@@ -121,6 +121,9 @@ void dump_ast(ASTArr ast, FILE* out) {
             for (size_t j = 0; j < node.as.let.body.len; j++) {
                 fprintf(out, "    %zu -> %zu;\n", node.id, node.as.let.body.data[j].id);
             }
+            for (size_t j = 0; j < node.as.let.rhs.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.let.rhs.data[j].id);
+            }
             dump_ast(node.as.let.rhs, out);
             dump_ast(node.as.let.body, out);
             break;
@@ -138,6 +141,29 @@ void dump_ast(ASTArr ast, FILE* out) {
                 fprintf(out, "    %zu -> %zu;\n", node.id, node.as.apply.args.data[j].id);
             }
             dump_ast(node.as.apply.args, out);
+            break;
+        case AST_IF:
+            fprintf(out, "    %zu [label=\"if\"];\n", node.id);
+            for (size_t j = 0; j < node.as.iff.cond.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.iff.cond.data[j].id);
+            }
+            dump_ast(node.as.iff.cond, out);
+            for (size_t j = 0; j < node.as.iff.then.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.iff.then.data[j].id);
+            }
+            dump_ast(node.as.iff.then, out);
+            for (size_t j = 0; j < node.as.iff.elsee.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.iff.elsee.data[j].id);
+            }
+            dump_ast(node.as.iff.elsee, out);
+            break;
+        case AST_BLOCK:
+            fprintf(out, "    %zu [label=\"block\"];\n", node.id);
+            for (size_t j = 0; j < node.as.block.len; j++) {
+                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.block.data[j].id);
+            }
+            dump_ast(node.as.block, out);
+            break;
         }
     }
 }
@@ -178,10 +204,7 @@ void compile(Target target, const char *const file_name, FILE *input,
         goto exit;
     }
 
-    //TypeTable tt = {0};
-    //extract_types(&arena, body, &tt);
-
-    //typecheck(body, tt);
+    typecheck(body);
 
     //CodeGenCTX cg_ctx = { 0 };
     //IR ir = codegen(&arena, body, &cg_ctx);

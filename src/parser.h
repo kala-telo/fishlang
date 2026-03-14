@@ -58,10 +58,6 @@ struct _TypeAST {
     } as;
 };
 
-typedef struct {
-    String name;
-    TypeAST type;
-} FnArg;
 
 struct _AST {
     ASTKind kind;
@@ -108,9 +104,13 @@ struct _AST {
         } let; // AST_LET
         struct {
             struct {
-                FnArg* data;
+                String* data;
                 size_t len, capacity;
-            } args;
+            } args_names;
+            struct {
+                TypeAST* data;
+                size_t len, capacity;
+            } args_types;
             ASTArr body;
         } fn; // AST_FN
         struct {
