@@ -9,49 +9,92 @@
 #define PLOC(x) (x).file, (x).line+1, (x).col+1
 #define AST2ARR(x) (ASTArr){&(x), 1, 0}
 
-SymbolID make_sym(size_t id, String name) {
-}
-
-void insert_type(Arena *arena, TypeTable *tt, size_t id, String name, Type type) {
-}
-
-Type get_type(TypeTable tt, size_t id, String name) {
-}
-
-#if 0
-Type string2type(String str, Location loc) {
-    if (string_eq(str, S("i32"))) {
-        return (Type){TYPE_I32, {0}};
-    } else if (string_eq(str, S("cstr"))) {
-        return (Type){TYPE_CSTR, {0}};
-    } else if (string_eq(str, S("..."))) {
-        return (Type){TYPE_ANY, {0}};
-    } else if (string_eq(str, S("void"))) {
-        return (Type){TYPE_VOID, {0}};
-    } else {
-        fprintf(stderr, "Unknown type \"%.*s\" at %s:%d:%d\n", PS(str),
-                loc.file, loc.line + 1, loc.col + 1);
-        TODO();
-        return (Type){0};
+bool match_types(TypeAST t1, TypeAST t2) {
+    if (t1.type != t2.type) return false;
+    if (t1.type != TYPE_FN) return true;
+    if (t1.as.fn.len != t2.as.fn.len) return false;
+    for (size_t i = 0; i < t1.as.fn.len; i++) {
+        if (!match_types(t1.as.fn.data[i], t2.as.fn.data[i]))
+            return false;
     }
-}
-#endif
-
-bool types_match(Type t1, Type t2) {
-    return false;
+    return true;
 }
 
-bool type_int(Type t) {
+TypeAST find_type(AST starting, String name) {
+    if (starting.kind == AST_LET) {
+        if (string_eq(starting.as.let.name, name)) {
+            return typecheck(starting.as.let.rhs);
+        }
+    }
+    if (!starting.parent) {
+        fprintf(stderr, "Couldn't find a type for the name `%.*s'\n", PS(name));
+        abort();
+    }
+    return find_type(*starting.parent, name);
 }
 
-Type extract_types(Arena *arena, ASTArr ast, TypeTable *tt) {
-}
-
-void print_type(FILE* out, Type t) {
-}
-
-Type find_type(TypeTable tt, AST from, String name) {
-}
-
-Type typecheck(ASTArr ast, TypeTable tt) {
+TypeAST typecheck(ASTArr ast) {
+    TypeAST t = {0};
+    for (size_t i = 0; i < ast.len; i++) {
+        AST node = ast.data[i];
+        switch (node.kind) {
+        case AST_LET:
+            typecheck(node.as.let.rhs);
+            t = typecheck(node.as.let.body);
+            break;
+        case AST_FN: {
+            TypeAST ret = da_last(node.as.fn.args_types);
+            if (!match_types(ret, typecheck(node.as.fn.body))) {
+                TODO();
+            }
+            t.type = TYPE_FN;
+            t.as.fn.data = node.as.fn.args_types.data;
+            t.as.fn.len = node.as.fn.args_types.len;
+        } break;
+        case AST_NUMBER:
+            t.type = TYPE_I32;
+            break;
+        case AST_STRING:
+            t.type = TYPE_CSTR;
+            break;
+        case AST_APPLY: {
+            TypeAST app_type = find_type(node, node.as.apply.name);
+            if (node.as.apply.args.len == 0) {
+                t = app_type;
+                break;
+            }
+            if (app_type.type != TYPE_FN) {
+                fprintf(stderr, "app_type.type = %d\n", app_type.type);
+                TODO(); // supposedly those are supposed to be handled by above
+            }
+            // -1 for return type
+            if (app_type.as.fn.len - 1 != node.as.apply.args.len) {
+                TODO(); // TODO: handle variadics
+            }
+            for (size_t j = 0; j < app_type.as.fn.len - 1; j++) {
+                bool m = match_types(
+                    app_type.as.fn.data[j],
+                    typecheck(AST2ARR(node.as.apply.args.data[j]))
+                );
+                if (!m) {
+                    TODO(); // error message
+                }
+            }
+        } break;
+        case AST_IF: {
+            TypeAST t1 = typecheck(node.as.iff.then);
+            TypeAST t2 = typecheck(node.as.iff.elsee);
+            if (!match_types(t1, t2)) {
+                TODO();
+            }
+            if (typecheck(node.as.iff.cond).type != TYPE_BOOL) {
+                TODO();
+            }
+        } break;
+        default:
+            fprintf(stderr, "unimplemented node kind %d\n", node.kind);
+            TODO();
+        }
+    }
+    return t;
 }
