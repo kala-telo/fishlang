@@ -1,4 +1,4 @@
-let printf = fn cstr i32 => i32
+let printf = fn cstr i32 i32 => extern
 
 let foo = fn a: i32 b: i32 c: i32 d: i32 e: i32 f: i32 g: i32 i32 =>
     let [v0  =   a + 1;

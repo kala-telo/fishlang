@@ -127,6 +127,10 @@ struct _AST {
     Location loc;
     size_t id;
     AST *parent;
+    struct {
+        TypeAST type;
+        bool checked;
+    } typing;
 };
 
 struct _VarDef {

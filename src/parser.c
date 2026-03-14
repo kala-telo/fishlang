@@ -100,6 +100,7 @@ AST *parse_let_pair(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *
     da_append(arena, *arr, ((AST){AST_LET, {0}, lex->loc, (*node_id)++, parent}));
     AST *let = &da_last(*arr);
     let->as.let.name = t.str;
+    let->parent = parent;
     parse_expr(arena, lex, &let->as.let.rhs, let, node_id);
 }
 
@@ -145,16 +146,13 @@ void parse_expr(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node
     } break;
     case LEX_IF: {
         expect(next_token(lex), LEX_IF);
-        AST iff = {0};
-        iff.kind = AST_IF;
-        iff.id = (*node_id)++;
-        da_append(arena, *arr, iff);
-        AST *iffp = &da_last(*arr);
-        parse(arena, lex, &iffp->as.iff.cond, iffp, node_id);
+        da_append(arena, *arr, ((AST){AST_IF, {0}, lex->loc, (*node_id)++, parent}));
+        AST *iff = &da_last(*arr);
+        parse(arena, lex, &iff->as.iff.cond, iff, node_id);
         expect(next_token(lex), LEX_THEN);
-        parse_expr(arena, lex, &iffp->as.iff.then, iffp, node_id);
+        parse_expr(arena, lex, &iff->as.iff.then, iff, node_id);
         expect(next_token(lex), LEX_ELSE);
-        parse_expr(arena, lex, &iffp->as.iff.elsee, iffp, node_id);
+        parse_expr(arena, lex, &iff->as.iff.elsee, iff, node_id);
     } break;
     case LEX_BOOL: {
         String b = expect(next_token(lex), LEX_BOOL).str;
@@ -189,6 +187,7 @@ void parse_expr(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node
         AST block = {0};
         block.kind = AST_BLOCK;
         block.id = (*node_id)++;
+        block.parent = parent;
         da_append(arena, *arr, block);
         parse(arena, lex, &da_last(*arr).as.block, &da_last(*arr), node_id);
         expect(next_token(lex), LEX_CPAREN);
@@ -232,6 +231,7 @@ void parse_expr(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node
         while (peek_token(lex).kind != LEX_ARROW) {
             String name = S("");
             TypeAST type;
+            // TODO: make it impossible to name return type
             if (peek_token_n(lex, 2).kind == LEX_COLON) {
                 name = expect(next_token(lex), LEX_NAME).str;
                 expect(next_token(lex), LEX_COLON);
@@ -240,6 +240,8 @@ void parse_expr(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node
             da_append(arena, fn->as.fn.args_names, name);
             da_append(arena, fn->as.fn.args_types, type);
         }
+        // for return type
+        fn->as.fn.args_names.len--;
         expect(next_token(lex), LEX_ARROW);
         if (peek_token(lex).kind == LEX_EXTERN) {
             expect(next_token(lex), LEX_EXTERN);

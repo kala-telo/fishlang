@@ -128,7 +128,11 @@ void dump_ast(ASTArr ast, FILE* out) {
             dump_ast(node.as.let.body, out);
             break;
         case AST_FN:
-            fprintf(out, "    %zu [label=\"fn\"];\n", node.id);
+            fprintf(out, "    %zu [label=\"fn", node.id);
+            for (size_t j = 0; j < node.as.fn.args_names.len; j++) {
+                fprintf(out, " %.*s", PS(node.as.fn.args_names.data[j]));
+            }
+            fprintf(out, "\"];\n");
             for (size_t j = 0; j < node.as.fn.body.len; j++) {
                 fprintf(out, "    %zu -> %zu;\n", node.id, node.as.fn.body.data[j].id);
             }
