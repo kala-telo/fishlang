@@ -6,12 +6,14 @@
 #include <string.h>
 #include <inttypes.h>
 
-#include "codegen.h"
+#include "son.h"
 #include "lexer.h"
 #include "parser.h"
 #include "tac.h"
 #include "todo.h"
 #include "typing.h"
+#include "da.h"
+#include "todo.h"
 
 typedef enum {
     TARGET_PPC,
@@ -51,48 +53,6 @@ void dump_ast(ASTArr ast, FILE* out) {
         case AST_BOOL:
             fprintf(out, "    %zu [label=\"bool\"];\n", node.id);
             break;
-        case AST_CALL:
-            fprintf(out, "    %zu [label=\"call (%.*s)\"];\n", node.id,
-                   PS(node.as.call.callee));
-            for (size_t j = 0; j < node.as.call.args.len; j++) {
-                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.call.args.data[j].id);
-            }
-            dump_ast(node.as.call.args, out);
-            break;
-        case AST_DEF:
-            fprintf(out, "    %zu [label=\"def (%.*s)\"];\n", node.id,
-                   PS(node.as.def.name));
-            for (size_t j = 0; j < node.as.def.body.len; j++) {
-                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.def.body.data[j].id);
-            }
-            dump_ast(node.as.def.body, out);
-            break;
-        case AST_EXTERN:
-            fprintf(out, "    %zu [label=\"extern (%.*s)\"];\n", node.id,
-                   PS(node.as.external.name));
-            for (size_t j = 0; j < node.as.external.body.len; j++) {
-                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.external.body.data[j].id);
-            }
-            dump_ast(node.as.external.body, out);
-            break;
-        case AST_FUNC:
-            fprintf(out, "    %zu [label=\"fn(", node.id);
-            for (size_t j = 0; j < node.as.func.args.len; j++) {
-                fprintf(out, "%.*s ", PS(node.as.func.args.data[j].name));
-            }
-            fprintf(out, ")\"];\n");
-            for (size_t j = 0; j < node.as.func.body.len; j++) {
-                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.func.body.data[j].id);
-            }
-            dump_ast(node.as.func.body, out);
-            break;
-        case AST_LIST:
-            fprintf(out, "    %zu [label=\"list\"];\n", node.id);
-            for (size_t j = 0; j < node.as.list.len; j++) {
-                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.list.data[j].id);
-            }
-            dump_ast(node.as.list, out);
-            break;
         case AST_NAME:
             fprintf(out, "    %zu [label=\"name (%.*s)\"];\n", node.id, PS(node.as.name));
             break;
@@ -107,13 +67,6 @@ void dump_ast(ASTArr ast, FILE* out) {
                     putc('\\', out);
             }
             fprintf(out,"')\"];\n");
-            break;
-        case AST_VARDEF:
-            fprintf(out, "    %zu [label=\"var\"];\n", node.id);
-            for (size_t j = 0; j < node.as.var.body.len; j++) {
-                fprintf(out, "    %zu -> %zu;\n", node.id, node.as.var.body.data[j].id);
-            }
-            dump_ast(node.as.var.body, out);
             break;
         case AST_LET:
             fprintf(out, "    %zu [label=\"let (%.*s)\"];\n", node.id,
@@ -210,8 +163,7 @@ void compile(Target target, const char *const file_name, FILE *input,
 
     typecheck(body);
 
-    //CodeGenCTX cg_ctx = { 0 };
-    //IR ir = codegen(&arena, body, &cg_ctx);
+    Node *ir = codegen(&arena, body, NULL);
     //for (size_t i = 0; i < ir.functions.len; i++) {
     //    StaticFunction *func = &ir.functions.data[i];
     //    bool repeat;

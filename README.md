@@ -28,9 +28,12 @@ You'll get the examples built in `.build/examples/`. It will try to build and te
 
 # Notes
 ## Typechecking
+### August 2025
 It was quite hard, you can even see gap on my github activity when I was doing it
 (August of 2025, not to say it was the only reason why I didn't made any commits, but definetly one of).
 It took me about 3 attemts to get it to point I'm happy with.
+### March 2026
+After re-implementing new set of AST nodes, i managed to dramatically simplify it, making typechecking much simpler and smaller.
 
 # References
 ## On compiler dev in general

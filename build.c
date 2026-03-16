@@ -415,17 +415,18 @@ int main(int argc, char *argv[]) {
         return -1;
 
     String files[] = {
-        S("src/codegen.c"),
+        S("src/son.c"),
         S("src/parser.c"),
         S("src/lexer.c"),
         S("src/main.c"),
         S("src/tac.c"),
         S("src/typing.c"),
-        S("src/targets/x86.c"),
-        S("src/targets/ppc.c"),
-        S("src/targets/mips.c"),
-        S("src/targets/debug.c"),
-        S("src/targets/pdp8.c"),
+        //S("src/codegen.c"),
+        //S("src/targets/x86.c"),
+        //S("src/targets/ppc.c"),
+        //S("src/targets/mips.c"),
+        //S("src/targets/debug.c"),
+        //S("src/targets/pdp8.c"),
     };
 
 #ifdef UNIT_BUILD

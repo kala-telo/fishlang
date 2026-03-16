@@ -11,17 +11,9 @@
 typedef struct _AST AST;
 
 typedef enum {
-    // OLD
-    AST_FUNC,
-    AST_DEF,
-    AST_VARDEF,
-    AST_EXTERN,
-    AST_CALL,
+    AST_STRING,
     AST_NUMBER,
     AST_BOOL,
-    AST_LIST,
-    // NEW
-    AST_STRING,
     AST_NAME,
     AST_LET,
     AST_FN,
@@ -62,41 +54,6 @@ struct _TypeAST {
 struct _AST {
     ASTKind kind;
     union {
-        // OLD
-        struct { // AST_FUNC
-            struct {
-                VarDef *data;
-                size_t len, capacity;
-            } args;
-            ASTArr ret;
-            ASTArr body;
-            bool ret_type_void;
-        } func;
-        struct { // AST_CALL
-            String callee;
-            ASTArr args;
-        } call;
-        String string;  // AST_STRING
-        String name;    // AST_NAME
-        ASTArr list;    // AST_LIST
-        int64_t number; // AST_NUMBER
-        bool boolean;   // AST_BOOL
-        struct {        // AST_VARDEF
-            struct {
-                Variable *data;
-                size_t len, capacity;
-            } variables;
-            ASTArr body;
-        } var;
-        struct {
-            String name;
-            ASTArr body;
-        } external; // AST_EXTERN
-        struct {
-            String name;
-            ASTArr body;
-        } def; // AST_DEF
-        // NEW
         struct {
             String name;
             ASTArr rhs;
@@ -123,6 +80,10 @@ struct _AST {
             ASTArr then;
             ASTArr elsee;
         } iff; // AST_IF
+        String string;  // AST_STRING
+        String name;    // AST_NAME
+        int64_t number; // AST_NUMBER
+        bool boolean;   // AST_BOOL
     } as;
     Location loc;
     size_t id;
