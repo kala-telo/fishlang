@@ -184,11 +184,12 @@ void parse_expr(Arena *arena, Lexer *lex, ASTArr *arr, AST* parent, size_t *node
     } break;
     case LEX_OPAREN: {
         expect(next_token(lex), LEX_OPAREN);
-        AST block = {0};
-        block.kind = AST_BLOCK;
-        block.id = (*node_id)++;
-        block.parent = parent;
-        da_append(arena, *arr, block);
+        if (peek_token(lex).kind == LEX_CPAREN) {
+            expect(next_token(lex), LEX_CPAREN);
+            da_append(arena, *arr, ((AST){AST_UNIT, {0}, lex->loc, (*node_id)++, parent}));
+            break;
+        }
+        da_append(arena, *arr, ((AST){AST_BLOCK, {0}, lex->loc, (*node_id)++, parent}));
         parse(arena, lex, &da_last(*arr).as.block, &da_last(*arr), node_id);
         expect(next_token(lex), LEX_CPAREN);
         check_binop(arena, lex, arr, parent, node_id);

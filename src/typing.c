@@ -140,9 +140,12 @@ TypeAST typecheck(ASTArr ast) {
             }
             t = t1;
         } break;
-        case AST_BLOCK: {
+        case AST_BLOCK:
             t = typecheck(node.as.block);
-        } break;
+            break;
+        case AST_UNIT:
+            t.type = TYPE_UNIT;
+            break;
         default:
             fprintf(stderr, "unimplemented node kind %d\n", node.kind);
             TODO();

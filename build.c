@@ -415,7 +415,6 @@ int main(int argc, char *argv[]) {
         return -1;
 
     String files[] = {
-        S("src/son.c"),
         S("src/parser.c"),
         S("src/lexer.c"),
         S("src/main.c"),

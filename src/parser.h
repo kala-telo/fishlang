@@ -20,6 +20,7 @@ typedef enum {
     AST_APPLY,
     AST_BLOCK,
     AST_IF,
+    AST_UNIT,
 } ASTKind;
 
 typedef struct {

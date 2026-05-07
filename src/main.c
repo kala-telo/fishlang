@@ -6,7 +6,6 @@
 #include <string.h>
 #include <inttypes.h>
 
-#include "son.h"
 #include "lexer.h"
 #include "parser.h"
 #include "tac.h"
@@ -50,8 +49,11 @@ void dump_ast(ASTArr ast, FILE* out) {
     for (size_t i = 0; i < ast.len; i++) {
         AST node = ast.data[i];
         switch (node.kind) {
+        case AST_UNIT:
+            fprintf(out, "    %zu [label=\"uint\"];\n", node.id);
+            break;
         case AST_BOOL:
-            fprintf(out, "    %zu [label=\"bool\"];\n", node.id);
+            fprintf(out, "    %zu [label=\"bool %c\"];\n", node.id, node.as.boolean["ft"]);
             break;
         case AST_NAME:
             fprintf(out, "    %zu [label=\"name (%.*s)\"];\n", node.id, PS(node.as.name));
@@ -161,9 +163,12 @@ void compile(Target target, const char *const file_name, FILE *input,
         goto exit;
     }
 
-    typecheck(body);
+    if (typecheck(body).type != TYPE_UNIT) {
+        fprintf(stderr, "File's evaluation result is not unit\n");
+        exit(1);
+    }
 
-    Node *ir = codegen(&arena, body, NULL);
+    //Node *ir = codegen(&arena, body, NULL);
     //for (size_t i = 0; i < ir.functions.len; i++) {
     //    StaticFunction *func = &ir.functions.data[i];
     //    bool repeat;
